@@ -1,0 +1,4 @@
+# Documentation
+# Ignore development logs and requirements, but keep usage guides tracked.
+docs/devlogs/
+docs/requirements/

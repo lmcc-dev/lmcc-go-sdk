@@ -1,0 +1,18 @@
+# Example Configuration for simple-config-app (config.yaml)
+server:
+  port: 9091 # Different from SDK default
+  mode: "debug"
+
+log:
+  level: "trace" # Let's use a non-default level for demo
+
+database:
+  host: "example-db-host"
+  user: "appuser"
+  dbName: "app_db"
+
+# Include a custom section for this app
+customFeature:
+  apiKey: "app-specific-key-from-file"
+  rateLimit: 500
+  enabled: true 

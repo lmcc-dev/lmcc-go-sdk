@@ -1,0 +1,51 @@
+# lmcc-go-sdk Example Configuration (config.yaml.example)
+# Copy this file to config.yaml and adjust values as needed.
+
+server:
+  # host: "0.0.0.0" # Default: "0.0.0.0"
+  port: 8080        # Default: 8080
+  mode: "debug"     # Default: "release". Options: debug, release, test
+  # readTimeout: 5s  # Default: 5s
+  # writeTimeout: 10s # Default: 10s
+  # gracefulShutdownTimeout: 10s # Default: 10s
+
+log:
+  level: "debug"    # Default: "info". Options: debug, info, warn, error
+  format: "text"    # Default: "text". Options: json, text
+  output: "stdout"  # Default: "stdout". Options: stdout, stderr, file
+  # filename: "app.log" # Required if output is 'file'. Default: "app.log"
+  # maxSize: 100      # MB. Default: 100
+  # maxBackups: 5     # Default: 5
+  # maxAge: 7         # days. Default: 7
+  # compress: false   # Default: false
+
+database:
+  type: "mysql"     # Default: "mysql". Options: mysql, postgres, sqlite, etc.
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: ""      # Use environment variable (e.g., LMCC_DATABASE_PASSWORD) in production
+  dbName: "my_app_db"
+  # maxIdleConns: 10  # Default: 10
+  # maxOpenConns: 100 # Default: 100
+  # connMaxLifetime: 1h # Default: 1h
+
+tracing:
+  enabled: false    # Default: false
+  # provider: "jaeger" # Default: "jaeger". Options: jaeger, zipkin, otel
+  # endpoint: "http://localhost:14268/api/traces" # Collector endpoint
+  # samplerType: "const" # Default: "const". Options: const, probabilistic, rateLimiting
+  # samplerParam: 1.0    # Default: 1.0 (for const sampler)
+
+metrics:
+  enabled: false    # Default: false
+  # provider: "prometheus" # Default: "prometheus"
+  # port: 9090         # Default: 9090
+  # path: "/metrics"     # Default: "/metrics"
+
+# --- User Defined Section Example ---
+# Add your application-specific configurations here if you extended the config struct
+# customFeature:
+#   apiKey: "your-api-key" # Use environment variable (e.g., LMCC_CUSTOMFEATURE_APIKEY) in production
+#   rateLimit: 1000
+#   enabled: true 

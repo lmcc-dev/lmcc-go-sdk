@@ -1,0 +1,22 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# lmcc-go-sdk marmotedu组件集成
+
+## 核心组件概览
+
+lmcc-go-sdk 项目采用marmotedu生态系统的多个核心组件，以提升工程质量和开发效率。
+
+
+## 最佳实践
+
+- 使用marmotedu/errors替代所有错误处理
+- 统一使用marmotedu/log进行日志记录
+- 遵循marmotedu/api设计规范开发新API
+- 利用marmotedu/component-base简化应用框架
+- go version go1.23.6
+
+
+
