@@ -61,6 +61,20 @@ You can run these commands from the root directory of the project.
 -   **`make tools`**
     -   Installs all required development tools listed in `scripts/make-rules/tools.mk` (currently `golangci-lint` and `goimports`). This is useful for setting up the development environment initially.
 
+### `make doc-view PKG=./path/to/package`
+
+Displays the Go documentation for the specified package in the terminal. The `PKG` variable is **required**.
+
+*   **`PKG`**: Specifies the path to the Go package for which to display documentation (e.g., `./pkg/log`, `./pkg/config`).
+
+Example: `make doc-view PKG=./pkg/config`
+
+### `make doc-serve`
+
+Starts a local `godoc` HTTP server (typically on `http://localhost:6060`) to browse HTML documentation for all packages in your Go workspace, including your current project. It will automatically install `godoc` if it's not already present.
+
+Press `Ctrl+C` in the terminal to stop the server.
+
 ## 3. Customization (Optional)
 
 -   **Adding Tools**: Edit `scripts/make-rules/tools.mk` to add new tools to `TOOLS_REQUIRED` and provide corresponding `install.<toolname>` rules.

@@ -64,4 +64,18 @@
 ## 3. 自定义 (可选)
 
 -   **添加工具**: 编辑 `scripts/make-rules/tools.mk` 文件，将新工具添加到 `TOOLS_REQUIRED` 变量中，并提供相应的 `install.<toolname>` 规则。
--   **详细输出**: 运行任何命令时加上 `V=1` 可以获取更详细的输出（例如 `make test V=1`）。 
+-   **详细输出**: 运行任何命令时加上 `V=1` 可以获取更详细的输出（例如 `make test V=1`）。
+
+### `make doc-view PKG=./path/to/package`
+
+在终端中显示指定包的 Go 文档。`PKG` 变量是**必需的**。
+
+*   **`PKG`**: 指定要显示文档的 Go 包的路径（例如，`./pkg/log`, `./pkg/config`）。
+
+示例: `make doc-view PKG=./pkg/config`
+
+### `make doc-serve`
+
+启动一个本地 `godoc` HTTP 服务器（通常在 `http://localhost:6060`），用于在浏览器中浏览 Go 工作区中所有包的 HTML 文档，包括您当前的项目。如果 `godoc` 工具尚未安装，它会自动安装。
+
+在终端中按 `Ctrl+C` 来停止服务。 

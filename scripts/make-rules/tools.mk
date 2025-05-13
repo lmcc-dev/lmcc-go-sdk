@@ -9,7 +9,8 @@
 # Add more tools here as needed.
 TOOLS_REQUIRED := \
 	golangci-lint \
-	goimports
+	goimports \
+	godoc
 #	 golines # Uncomment if needed
 #	 mockgen # Example: Uncomment if needed
 #	 gotests # Example: Uncomment if needed
@@ -83,6 +84,13 @@ install.golangci-lint:
 .PHONY: install.goimports
 install.goimports:
 	@$(GO) install golang.org/x/tools/cmd/goimports@latest
+	$(call run_asdf_reshim,golang)
+
+# install.godoc: Install godoc.
+.PHONY: install.godoc
+install.godoc:
+	@echo "Installing godoc (golang.org/x/tools/cmd/godoc)..."
+	@$(GO) install golang.org/x/tools/cmd/godoc@latest
 	$(call run_asdf_reshim,golang)
 
 # TODO: Add install rules for other tools as needed.
