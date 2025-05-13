@@ -11,6 +11,7 @@
 ## ✨ Features
 
 *   **Configuration Management (`pkg/config`):** Flexible loading from files (YAML, TOML), environment variables, and struct tag defaults with hot-reloading capabilities.
+*   **Logging (`pkg/log`):** Comprehensive logging capabilities including structured logging (with `zap`), configurable levels, formats (text, JSON), and output paths (console, files). Supports log rotation and dynamic reconfiguration via `pkg/config` for hot-reloading of logging settings. Context-aware logging for enhanced traceability.
 *   **(More features to be added)**
 
 ## 🚀 Getting Started
@@ -27,10 +28,13 @@ go get github.com/lmcc-dev/lmcc-go-sdk
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	sdkconfig "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+	sdklog "github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
 	"time"
 )
 
@@ -73,6 +77,38 @@ func main() {
 	fmt.Printf("Server Port: %d\n", MyConfig.Server.Port)
 	fmt.Printf("Server Timeout: %s\n", MyConfig.Server.Timeout)
 	fmt.Printf("Debug Mode: %t\n", MyConfig.Debug)
+
+	// --- SDK Logging Quick Start ---
+	// Initialize a simple logger
+	logOpts := sdklog.NewOptions()
+	logOpts.Level = "info"       // Set desired level (e.g., "debug", "info", "warn")
+	logOpts.Format = "console"    // Choose "console" (human-readable) or "json"
+	logOpts.OutputPaths = []string{"stdout"} // Log to standard output. Can also be a file path e.g., ["./app.log"]
+	logOpts.EnableColor = true // For console output, makes it more readable
+	sdklog.Init(logOpts)
+	// Important: Defer Sync to flush logs before application exits.
+	// It's good practice to call this, especially for file-based logging.
+	defer func() {
+		if err := sdklog.Sync(); err != nil {
+			// Handle logger sync error, e.g., log to standard logger
+			// This is unlikely to happen with stdout but good for file logs.
+			fmt.Fprintf(os.Stderr, "Failed to sync sdk logger: %v\n", err)
+		}
+	}()
+
+	sdklog.Info("SDK Logger initialized. This is an INFO message.")
+	sdklog.Debugw("This is a DEBUG message with structured fields (won't be visible if level is 'info').", "userID", "user123", "action", "attempt_debug")
+	sdklog.Errorw("This is an ERROR message.", "operation", "database_connection", "attempt", 3, "success", false)
+
+	// Contextual logging example
+	ctx := context.Background()
+	// Typically, a trace ID would come from an incoming request or be generated.
+	ctxWithTrace := sdklog.ContextWithTraceID(ctx, "trace-id-example-xyz789") 
+	sdklog.Ctx(ctxWithTrace).Infow("Processing payment.", "customerID", "cust999", "amount", 100.50)
+
+	// Note: For advanced logging (file rotation, hot-reloading via pkg/config),
+	// please see the detailed pkg/log usage guide in `docs/usage-guides/log/log_usage_en.md`
+	// and the comprehensive example in `examples/simple-config-app/main.go`.
 
 	// Example config.yaml:
 	/*
