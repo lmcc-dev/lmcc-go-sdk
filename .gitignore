@@ -2,3 +2,10 @@
 # Ignore development logs and requirements, but keep usage guides tracked.
 docs/devlogs/
 docs/requirements/
+docs/troubleshooting/
+
+# Ignore specific process documents
+docs/development_process.md
+docs/development_process_zh.md
+.cursor/*
+_output/

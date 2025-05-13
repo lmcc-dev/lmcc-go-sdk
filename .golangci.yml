@@ -1,0 +1,31 @@
+run:
+  # 设置最短超时时间
+  timeout: 1m
+  # 不使用模块缓存
+  modules-download-mode: readonly
+  # 允许的包路径
+  go: '1.23'
+  # 运行分析测试文件
+  tests: true
+  
+# 开启的 linter
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+# 输出设置
+output:
+  format: colored-line-number
+
+# 忽略的问题
+issues:
+  exclude-use-default: true
+  # 最大问题数
+  max-issues-per-linter: 50
+  max-same-issues: 3 

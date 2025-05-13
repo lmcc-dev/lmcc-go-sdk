@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 # lmcc-go-sdk marmotedu组件集成
 
@@ -19,4 +19,57 @@ lmcc-go-sdk 项目采用marmotedu生态系统的多个核心组件，以提升�
 - go version go1.23.6
 
 
+## New Go Features by Category
 
+### Concurrency & Synchronization
+- Use new types in sync/atomic package (Bool, Int32, Int64) for lock-free atomic operations
+- Apply generic Pointer atomic type for type-safe concurrent access
+- Leverage context package's WithDeadlineCause/WithTimeoutCause for timeout control with error propagation
+
+### Generic Programming
+- Use Compare and Less generic functions from cmp package to simplify ordered type comparisons
+- Apply generic iterator patterns (Pull/Seq) from iter package for sequence processing
+- Create type-safe weak reference pointers with weak.Make
+
+### Testing & Performance
+- Use Context method in testing package for timeout-enabled tests
+- Apply Chdir method to switch working directories during tests
+- Implement global initialization and cleanup for test suites with TestMain
+- Obtain code coverage data using the Coverage function
+
+### Security & Cryptography
+- Verify certificate revocation status with ParseRevocationList from crypto/x509
+- Implement post-quantum encryption solutions using crypto/mlkem
+- Generate cryptographically secure random text with crypto/rand.Text
+
+### Resource Management
+- Implement automatic resource cleanup with runtime.AddCleanup
+- Terminate cleanup processes early using Cleanup.Stop
+- Manage non-critical resource lifecycles with weak references
+
+### Data Processing
+- Process binary data efficiently with Append function series in encoding/binary
+- Perform buffer text concatenation using fmt package's Appendx function series
+- Handle raw zip file data with new methods in archive/zip
+
+### Logging & Monitoring
+- Implement structured logging with log/slog package
+- Test custom log handlers using slogtest.Run
+- Perform task and region tracking with runtime/trace
+
+## Development Guidelines
+
+1. Always check the latest documentation before implementing new features (Context7 approach)
+2. Plan implementation steps thoroughly before coding (Sequential Thinking approach)
+3. Write idiomatic Go code following the [Effective Go](https://golang.org/doc/effective_go) guidelines
+4. Use modules for dependency management
+5. Implement comprehensive tests for all packages
+6. Prefer standard library solutions when available
+7. Apply proper error handling patterns
+
+## Code Documentation
+All code should include:
+- English and Chinese bilingual comments for important elements
+- Package documentation
+- Function and method documentation with parameter and return descriptions
+- Examples for complex functionality

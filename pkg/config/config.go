@@ -12,113 +12,110 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-
-	// Needed by defaults.go and accessors.go
-	// "strconv" // Needed by defaults.go
 	"strings"
-	// Needed by types.go, defaults.go, accessors.go
+	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 )
 
+// Note: ConfigChangeCallback, configManager, newConfigManager, RegisterCallback, notifyCallbacks, GetViperInstance
+// are now defined in manager.go
+// SectionChangeCallback and Manager interface are defined in types.go
+
 // 全局配置实例 (Global configuration instance)
-// Type Config is defined in types.go
-// Getter functions (like GetString, GetInt) are defined in accessors.go
-// Option types and With... functions are defined in options.go
-// Default handling helpers (like initializeNilPointers, applyDefaultsFromStructTags) are defined in defaults.go
-var Cfg *Config // This will be set after LoadConfig is called.
+// 注意：这个变量将在 LoadConfig 或 LoadConfigAndWatch 成功执行后被设置。
+// (Note: This variable will be set after LoadConfig or LoadConfigAndWatch executes successfully.)
+var Cfg *Config
 
-// LoadConfig 加载配置 (Load configuration)
-// 现在的加载顺序：
-// 1. 应用选项
-// 2. 初始化 Nil 指针
-// 3. 应用结构体标签默认值
-// 4. 配置 Viper (Env, 文件)
-// 5. 读取配置文件
-// 6. Viper Unmarshal
-// 7. 配置热重载
-// 8. 更新全局 Cfg
-// (Current loading order:
-// 1. Apply options
-// 2. Initialize nil pointers
-// 3. Apply struct tag defaults
-// 4. Configure Viper (Env, file)
-// 5. Read config file
-// 6. Viper Unmarshal
-// 7. Configure hot reload
-// 8. Update global Cfg)
-func LoadConfig[T any](cfg *T, opts ...Option) error {
-	// 应用默认选项和用户提供的选项 (Apply default options and user-provided options)
-	options := defaultOptions // from options.go
-	for _, opt := range opts {
-		opt(&options)
-	}
+// 全局 Cfg 的互斥锁 (Mutex for global Cfg) - 用于保护对全局 Cfg 的并发访问。
+// (Mutex for global Cfg - used to protect concurrent access to the global Cfg.)
+var cfgMux sync.RWMutex
 
-	// --- 默认值处理提前 --- (Default value handling moved earlier)
+// updateGlobalCfg is now defined in accessors.go
+
+// GetGlobalCfg 安全地返回全局 Cfg 变量。
+// (GetGlobalCfg safely returns the global Cfg variable.)
+// Returns:
+//   *Config: 指向全局配置实例的指针 (如果已加载)。
+//           (A pointer to the global configuration instance, if loaded.)
+func GetGlobalCfg() *Config {
+	cfgMux.RLock()
+	defer cfgMux.RUnlock()
+	return Cfg
+}
+
+// LoadConfigAndWatch 加载配置并启动监控以实现运行时更新。
+// 这是推荐的主要配置加载函数。
+// (LoadConfigAndWatch loads the configuration and starts watching for runtime updates.)
+// (This is the recommended primary function for loading configuration.)
+//
+// Parameters:
+//   cfg:  指向要填充的配置结构体的指针。该结构体应使用 `mapstructure` 和 `default` 标签。
+//         (A pointer to the configuration struct to be populated. It should use `mapstructure` and `default` tags.)
+//   opts: 一个或多个配置选项 (Option)，用于自定义加载行为 (例如，配置文件路径、环境变量前缀、热重载)。
+//         (One or more configuration options (Option) to customize loading behavior (e.g., config file path, env var prefix, hot-reload).)
+//
+// Returns:
+//   *configManager[T]: 一个配置管理器实例，可用于注册回调或获取内部 Viper 实例。
+//                      (A config manager instance that can be used to register callbacks or get the internal Viper instance.)
+//   error: 加载或监控过程中发生的任何错误。
+//          (Any error that occurred during loading or watching.)
+func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
+	cm := newConfigManager(cfg, opts...) // newConfigManager is defined in manager.go
+
 	// 1. 初始化 cfg 中的 nil 指针字段 (Initialize nil pointer fields in cfg)
-	initializeNilPointers(cfg) // from defaults.go
+	// Assuming initializeNilPointers is defined elsewhere (e.g., defaults.go)
+	initializeNilPointers(cm.cfg)
 
-	// --- Viper 配置 --- (Viper configuration)
-	v := viper.New()
-
-	// 3. 配置 Viper 从环境变量读取 (Configure Viper to read from environment variables)
-	if options.enableEnvVarOverride {
+	// 2. 配置 Viper 从环境变量读取 (Configure Viper to read from environment variables)
+	if cm.options.enableEnvVarOverride {
 		replacer := strings.NewReplacer(".", "_", "-", "_")
-		v.SetEnvPrefix(options.envPrefix)
-		v.SetEnvKeyReplacer(replacer)
-		v.AutomaticEnv()
-
-		// 显式绑定环境变量 (Explicitly bind environment variables)
-		bindEnvs(v, replacer, cfg) // <-- 恢复调用
+		cm.v.SetEnvPrefix(cm.options.envPrefix)
+		cm.v.SetEnvKeyReplacer(replacer)
+		cm.v.AutomaticEnv()
+		// Assuming bindEnvs is defined elsewhere (e.g., env.go or defaults.go)
+		bindEnvs(cm.v, replacer, cm.cfg)
 	}
 
-	// 4. 设置并读取配置文件 (Set and read the config file)
-	if options.configFilePath != "" {
-		v.SetConfigFile(options.configFilePath)
-		if options.configFileType == "" {
-			ext := filepath.Ext(options.configFilePath)
+	// 3. 设置并读取配置文件 (Set and read the config file)
+	configFileUsed := ""
+	if cm.options.configFilePath != "" {
+		cm.v.SetConfigFile(cm.options.configFilePath)
+		if cm.options.configFileType == "" {
+			ext := filepath.Ext(cm.options.configFilePath)
 			if len(ext) > 1 {
 				configType := strings.ToLower(ext[1:])
-				v.SetConfigType(configType)
+				cm.v.SetConfigType(configType)
 			} else {
-				log.Printf("Warning: Could not infer config type from file extension '%s'...", options.configFilePath)
+				log.Printf("Warning: Could not infer config type from file extension '%s'...", cm.options.configFilePath)
 			}
 		} else {
-			v.SetConfigType(strings.ToLower(options.configFileType))
+			cm.v.SetConfigType(strings.ToLower(cm.options.configFileType))
 		}
 
-		err := v.ReadInConfig()
+		err := cm.v.ReadInConfig()
 		if err != nil {
 			var configFileNotFoundError viper.ConfigFileNotFoundError
 			if errors.As(err, &configFileNotFoundError) || os.IsNotExist(err) {
-				log.Printf("Info: Config file '%s' not found...", options.configFilePath)
+				log.Printf("Info: Config file '%s' not found...", cm.options.configFilePath)
 			} else {
-				return fmt.Errorf("failed to read config file '%s': %w", options.configFilePath, err)
+				return nil, fmt.Errorf("failed to read config file '%s': %w", cm.options.configFilePath, err)
 			}
 		} else {
-			log.Printf("Info: Successfully read config file '%s'.", options.configFilePath)
+			configFileUsed = cm.options.configFilePath
+			log.Printf("Info: Successfully read config file '%s'.", configFileUsed)
 		}
 	} else {
 		log.Println("Info: No config file path provided...")
 	}
 
-	// --- 新增步骤: 从结构体标签设置 Viper 默认值 ---
-	// --- New Step: Set Viper defaults from struct tags ---
-	// 必须在 ReadInConfig 和 AutomaticEnv/bindEnvs 之后调用，以避免覆盖用户设置
-	// (Must be called AFTER ReadInConfig and AutomaticEnv/bindEnvs to avoid overriding user settings)
-	if err := setDefaultsFromTags(v, "", cfg); err != nil {
-		// 通常这里的错误是转换错误，前面会有日志打印，可能不需要返回错误
-		// (Usually errors here are conversion errors, logged previously, maybe not return error)
-		log.Printf("Warning: Error setting defaults from tags: %v", err)
-	}
-	// --- 结束新增步骤 ---
+	// 4. 从结构体标签设置 Viper 默认值 (Set Viper defaults from struct tags)
+	// Assuming setDefaultsFromTags is defined elsewhere (e.g., defaults.go)
+	setDefaultsFromTags(cm.v, cm.cfg, "")
 
 	// 5. 将 Viper 配置解组到结构体中 (Unmarshal the Viper config into the struct)
-
-	// 直接使用 mapstructure 库，更精确地控制解码过程
-	// (Use mapstructure library directly for more precise control over decoding)
 	decoderConfig := &mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
 			mapstructure.StringToTimeDurationHookFunc(),
@@ -126,63 +123,124 @@ func LoadConfig[T any](cfg *T, opts ...Option) error {
 		),
 		WeaklyTypedInput: true,
 		TagName:          "mapstructure",
-		Result:           cfg,
+		Result:           cm.cfg,
 		Squash:           true,
 	}
-
 	decoder, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create mapstructure decoder: %w", err)
+		return nil, fmt.Errorf("failed to create mapstructure decoder: %w", err)
+	}
+	if err := decoder.Decode(cm.v.AllSettings()); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config from mapstructure: %w", err)
 	}
 
-	if err := decoder.Decode(v.AllSettings()); err != nil {
-		return fmt.Errorf("failed to unmarshal config from mapstructure: %w", err)
+	// 6. 在解码后应用默认值到零值字段 (Apply defaults to zero-value fields after decoding)
+	// Assuming applyDefaultsToZeroFields is defined elsewhere (e.g., defaults.go)
+	if err := applyDefaultsToZeroFields(cm.cfg); err != nil {
+		return nil, fmt.Errorf("failed to apply defaults to zero fields after initial load: %w", err)
 	}
 
-	// 7. 配置热重载（如果启用）(Configure hot reload if enabled)
-	if options.enableHotReload && options.configFilePath != "" {
-		v.WatchConfig()
-		v.OnConfigChange(func(e fsnotify.Event) {
+	// 7. 配置并启动监控（如果启用）(Configure and start watching if enabled)
+	if cm.options.enableHotReload && configFileUsed != "" {
+		cm.v.WatchConfig()
+		// 使用 OnConfigChange 来处理 Viper 内部的文件变更通知
+		// (Use OnConfigChange to handle Viper's internal file change notifications)
+		cm.v.OnConfigChange(func(e fsnotify.Event) {
+			// 检查事件类型，避免不必要的重载（例如 CHMOD）
+			// Check event type to avoid unnecessary reloads (e.g., CHMOD)
+			if e.Op&fsnotify.Write != fsnotify.Write && e.Op&fsnotify.Create != fsnotify.Create {
+				log.Printf("Info: Config watcher received non-write/create event (%s), skipping reload.", e.Op)
+				return
+			}
+
 			log.Printf("Config file changed: %s. Reloading...", e.Name)
-			// 热重载时是否需要重新应用默认值？这是一个复杂的问题。
-			// (Should defaults be reapplied on hot reload? This is a complex question.)
-			// 当前逻辑：不重新应用默认值，只用 Viper 的新值覆盖。
-			// (Current logic: Defaults are NOT reapplied; only new Viper values overwrite.)
 
-			// 使用与主流程相同的 mapstructure 解码方法，而不是 v.Unmarshal
-			// (Use the same mapstructure decoding method as the main process, rather than v.Unmarshal)
+			// 重新读取配置 (Re-read the config)
+			if errRead := cm.v.ReadInConfig(); errRead != nil {
+				// 如果文件在监控期间被删除，ReadInConfig 会报错，这是可能的场景
+				// (If the file is deleted during watch, ReadInConfig will error, which is possible)
+				log.Printf("Error reading config during hot reload: %v", errRead)
+				// Consider if we should reset config or keep old one? Keep old one for now.
+				return // Skip update and callbacks if re-read fails
+			}
+
+			// 重新解码配置到 cm.cfg (Re-decode the configuration into cm.cfg)
 			newDecoderConfig := &mapstructure.DecoderConfig{
 				WeaklyTypedInput: true,
 				TagName:          "mapstructure",
-				Result:           cfg,
+				Result:           cm.cfg, // Update the existing config object
 				Squash:           true,
-				// 添加相同的类型转换钩子
-				// (Add the same type conversion hooks)
 				DecodeHook: mapstructure.ComposeDecodeHookFunc(
 					mapstructure.StringToTimeDurationHookFunc(),
 					mapstructure.StringToSliceHookFunc(","),
 				),
 			}
-
 			newDecoder, errDecoder := mapstructure.NewDecoder(newDecoderConfig)
 			if errDecoder != nil {
 				log.Printf("Error creating decoder during hot reload: %v", errDecoder)
-				return
+				return // Skip notifying callbacks on decoder error
 			}
 
-			if errUnmarshal := newDecoder.Decode(v.AllSettings()); errUnmarshal != nil {
+			if errUnmarshal := newDecoder.Decode(cm.v.AllSettings()); errUnmarshal != nil {
 				log.Printf("Error re-unmarshalling config during hot reload: %v", errUnmarshal)
-				return
+				return // Skip notifying callbacks on unmarshal error
+			}
+
+			// 在热重载解码后应用默认值 (Apply defaults after hot reload decoding)
+			if errApplyDefaults := applyDefaultsToZeroFields(cm.cfg); errApplyDefaults != nil {
+				log.Printf("Error applying defaults to zero fields during hot reload: %v", errApplyDefaults)
+				// Decide if we should skip callbacks or proceed. For now, proceed.
 			}
 
 			log.Println("Config reloaded successfully.")
-			updateGlobalCfg(cfg) // from accessors.go
+			// 调用 accessors.go 中的 updateGlobalCfg (Call updateGlobalCfg from accessors.go)
+			updateGlobalCfg(cm.cfg)
+
+			// 通知所有注册的回调 (Notify all registered callbacks)
+			cm.notifyCallbacks() // notifyCallbacks is defined in manager.go
 		})
-		log.Printf("Hot reload enabled for config file: %s", options.configFilePath)
+		log.Printf("Hot reload enabled for config file: %s", configFileUsed)
+	} else if cm.options.enableHotReload {
+		log.Println("Warning: Hot reload enabled but no config file was used, watcher not started.")
 	}
 
-	// 8. 更新全局 Cfg 变量 (Update the global Cfg variable)
-	updateGlobalCfg(cfg) // from accessors.go
+	// 首次加载后更新全局 Cfg 变量 (Update the global Cfg variable after initial load)
+	// 调用 accessors.go 中的 updateGlobalCfg (Call updateGlobalCfg from accessors.go)
+	updateGlobalCfg(cm.cfg)
 
-	return nil
+	return cm, nil
+}
+
+// LoadConfig 是一个简化的包装器，用于加载配置（不带热重载监控）。
+// (LoadConfig is a simplified wrapper for loading configuration without hot-reload watching.)
+// 推荐使用 LoadConfigAndWatch 来获取完整的运行时更新功能。
+// (Using LoadConfigAndWatch is recommended for full runtime update capabilities.)
+//
+// Parameters:
+//   cfg:  指向要填充的配置结构体的指针。该结构体应使用 `mapstructure` 和 `default` 标签。
+//         (A pointer to the configuration struct to be populated. It should use `mapstructure` and `default` tags.)
+//   opts: 一个或多个配置选项 (Option)，用于自定义加载行为。注意：WithHotReload 选项会被忽略。
+//         (One or more configuration options (Option) to customize loading behavior. Note: The WithHotReload option will be ignored.)
+//
+// Returns:
+//   error: 加载过程中发生的任何错误。
+//          (Any error that occurred during loading.)
+func LoadConfig[T any](cfg *T, opts ...Option) error {
+	// Filter out the WithHotReload option if present, as this function doesn't support it.
+	// (如果存在 WithHotReload 选项，则将其过滤掉，因为此函数不支持它。)
+	filteredOpts := []Option{}
+	for _, opt := range opts {
+		// We need a way to identify the hot reload option. Assuming it sets a specific flag.
+		// Let's temporarily assume WithHotReload sets options.enableHotReload to true.
+		// A better approach might be to have Option return an identifier or use type assertion.
+		tempOpts := defaultOptions // Apply option to temp struct to check its effect
+		opt(&tempOpts)
+		if !tempOpts.enableHotReload {
+			filteredOpts = append(filteredOpts, opt)
+		} else {
+			log.Println("Info: LoadConfig ignores the WithHotReload option.")
+		}
+	}
+	_, err := LoadConfigAndWatch(cfg, filteredOpts...)
+	return err
 }

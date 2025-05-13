@@ -14,8 +14,23 @@ import (
 	"github.com/spf13/viper"
 )
 
-// bindEnvs 递归地遍历配置结构体，并将每个字段绑定到相应的环境变量
-// (bindEnvs recursively traverses the config struct and binds each field to its corresponding environment variable)
+// bindEnvs 递归地遍历配置结构体 `iface`，并使用 Viper 实例 `v` 的 `BindEnv` 方法
+// 将每个字段绑定到相应的环境变量。
+// 它使用 `replacer` 来转换 Viper 键为环境变量名，并处理 `mapstructure` 或 `json` 标签。
+// `parts` 用于在递归时构建嵌套的 Viper 键。
+// (bindEnvs recursively traverses the configuration struct `iface` and uses the Viper instance `v`'s `BindEnv` method
+// to bind each field to its corresponding environment variable.)
+// (It uses the `replacer` to convert Viper keys to environment variable names and handles `mapstructure` or `json` tags.)
+// (`parts` is used to build nested Viper keys during recursion.)
+// Parameters:
+//   v: 要绑定环境变量的 Viper 实例。
+//      (The Viper instance to bind environment variables on.)
+//   replacer: 用于将 Viper 键转换为环境变量名的字符串替换器。
+//             (The string replacer used to convert Viper keys to environment variable names.)
+//   iface: 当前要处理的配置结构体（或其指针）。
+//          (The current configuration struct (or pointer to it) to process.)
+//   parts: 构建当前 Viper 键路径的组件。
+//          (Components for building the current Viper key path.)
 func bindEnvs(v *viper.Viper, replacer *strings.Replacer, iface interface{}, parts ...string) {
 	val := reflect.ValueOf(iface)
 	typ := reflect.TypeOf(iface)

@@ -6,7 +6,38 @@
 
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/spf13/viper" // Import viper
+)
+
+// SectionChangeCallback defines the type for callback functions invoked on configuration change for a specific section.
+// (SectionChangeCallback 定义了当特定配置节发生变更时调用的回调函数类型。)
+type SectionChangeCallback func(v *viper.Viper) error
+
+// Manager defines the interface for a configuration manager.
+// (Manager 定义了配置管理器的接口。)
+// It provides methods to access the underlying Viper instance and register callbacks for configuration changes.
+type Manager interface {
+	// GetViperInstance returns the underlying Viper instance used by the manager.
+	// (GetViperInstance 返回管理器使用的底层 Viper 实例。)
+	GetViperInstance() *viper.Viper
+
+	// RegisterCallback registers a general configuration change callback.
+	// This callback is triggered when any part of the configuration changes and receives the Viper instance and the decoded config object.
+	// (RegisterCallback 注册一个通用的配置变更回调。
+	// 当配置的任何部分发生更改时，将触发此回调，并接收 Viper 实例和解码后的配置对象。)
+	RegisterCallback(callback func(v *viper.Viper, cfg any) error) // Matches existing ConfigChangeCallback
+
+	// RegisterSectionChangeCallback registers a callback for changes in a specific configuration section.
+	// The callback receives the Viper instance and is responsible for unmarshalling its specific section.
+	// (RegisterSectionChangeCallback 注册特定配置节变更的回调。
+	// 回调接收 Viper 实例，并负责解组其特定节。)
+	RegisterSectionChangeCallback(sectionKey string, callback SectionChangeCallback)
+
+	// TODO: Consider adding StopWatch() or similar to control the watcher lifecycle if needed.
+}
 
 // Config 是 SDK 提供的基础配置结构体 (Base configuration struct provided by the SDK)
 // 用户可以通过嵌入此结构体来扩展自定义配置 (Users can extend this by embedding it in their own config struct)

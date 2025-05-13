@@ -20,7 +20,7 @@
     -   显示帮助信息，列出所有可用的目标及其描述。这是查看所有可用命令的最佳方式。
 
 -   **`make all`** (默认目标)
-    -   运行一系列常用任务：`format`, `lint`, `test`, 和 `tidy`。这对于在提交代码前进行快速检查很有用。
+    -   运行一系列常用任务：`format`, `lint`, `test-unit`, 和 `tidy`。这对于在提交代码前进行快速检查很有用。(注意: 默认运行 `test-unit`，而非所有测试)。
 
 -   **`make format`**
     -   使用标准工具 (`gofmt`, `goimports`) 格式化 Go 源代码。
@@ -32,14 +32,25 @@
     -   自动检查 `golangci-lint` 是否已安装，如果缺少则安装（通过 `make tools.verify.golangci-lint`）。
     -   *注意:* 您可能需要配置 `.golangci.yaml` 文件以适应项目特定的规则。
 
--   **`make test`**
-    -   运行项目中的所有单元测试（不包括 `examples/` 目录）。
+-   **`make test-unit [PKG=...] [RUN=...]`**
+    -   运行单元测试。
     -   包含 `-race` 标志以检测竞态条件。
+    -   默认情况下，运行所有包中的单元测试（不包括 `examples/`, `vendor/` 目录以及包含 `test/integration` 的路径）。
+    -   **可选 `PKG`**: 指定要进行单元测试的包。使用相对路径（例如 `make test-unit PKG=./pkg/log`）。如果指定了 `PKG`，则仅运行该包内的测试。
+    -   **可选 `RUN`**: 根据匹配测试函数名的正则表达式过滤要运行的测试（例如 `make test-unit RUN=TestMyFunction`，`make test-unit PKG=./pkg/log RUN=^TestLog`）。
 
--   **`make cover`**
-    -   运行所有单元测试并生成代码覆盖率报告。
+-   **`make test-integration [RUN=...]`**
+    -   运行集成测试。这些测试通常位于 `test/integration/` 目录下。
+    -   包含 `-race` 标志。
+    -   此目标通常不使用 `PKG` 参数，因为它旨在运行所有集成测试。
+    -   **可选 `RUN`**: 根据正则表达式过滤要运行的集成测试。
+
+-   **`make cover [PKG=...]`**
+    -   运行单元测试（类似于 `test-unit`）并生成代码覆盖率报告。
     -   将文本格式的 profile 保存到 `_output/coverage/coverage.out`。
     -   将 HTML 格式的报告保存到 `_output/coverage/coverage.html`，可以在浏览器中打开以进行详细分析。
+    -   **可选 `PKG`**: 指定要进行覆盖率检查的包。如果指定了 `PKG`，则仅为这些包生成覆盖率。否则，它将覆盖所有进行单元测试的包。
+    -   *注意:* 此目标专注于单元测试的覆盖率。
 
 -   **`make tidy`**
     -   运行 `go mod tidy` 以确保 `go.mod` 和 `go.sum` 文件与源代码依赖项一致。

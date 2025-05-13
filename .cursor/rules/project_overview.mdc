@@ -31,7 +31,7 @@ Core functional areas include:
 
 ## Documentation and Logging Language
 
-**Strict Requirement:** All project documentation within the `docs/` directory, including requirements ([requirements_zh.md](mdc:docs/requirements/requirements_zh.md)), the development plan ([development_plan.md](mdc:docs/development_plan.md)), and all development logs in [docs/devlogs/](mdc:docs/devlogs), **MUST** be written primarily in **Chinese**. English documentation ([requirements_en.md](mdc:docs/requirements_en.md)) serves as a secondary reference.
+**Strict Requirement:** All project documentation within the `docs/` directory, including requirements ([requirements_zh.md](mdc:docs/requirements/requirements_zh.md)), the development plan ([development_plan.md](mdc:docs/development_plan.md)), and all development logs in [docs/devlogs/](mdc:docs/devlogs), **MUST** be written primarily in **Chinese**. English documentation ([requirements_en.md](mdc:docs/requirements/requirements_en.md)) serves as a secondary reference.
 
 ## Planned Project Structure
 The project will follow a standard Go project layout, similar to `marmotedu/iam` or `marmotedu/miniblog`:
@@ -45,6 +45,13 @@ The project will follow a standard Go project layout, similar to `marmotedu/iam`
 - `test/`: Integration and end-to-end tests.
 - `examples/`: Example applications demonstrating SDK usage.
 
+## Standard Development Process
+
+The detailed step-by-step workflow for contributing to this project (planning, coding, testing, documenting, committing) is defined in:
+- [Standard Development Process](mdc:docs/development_process.md)
+
+Following this process is mandatory for all development tasks.
+
 ## Coding Standards & Practices
 - Adhere strictly to the Uber Go Style Guide.
 - Include bilingual (English and Chinese) comments for all public APIs, complex logic, and struct fields.
@@ -53,6 +60,14 @@ The project will follow a standard Go project layout, similar to `marmotedu/iam`
 - Strive for high test coverage.
 - Prioritize using stable, well-maintained third-party libraries over inventing new solutions (e.g., using `nicksnyder/go-i18n` for i18n).
 
+## Code Modularity and File Size Guideline
+
+- **Principle:** Strictly adhere to the DRY (Don't Repeat Yourself) principle.
+- **File Splitting:** To avoid overly large files, split code into multiple files based on functionality or module. This improves clarity and organization.
+- **Single Responsibility:** Each file should ideally contain related content only (e.g., a primary component/function, related sub-components/helpers, types, constants).
+- **Module Size:** Keep individual modules focused and reasonably sized. Complex features should be broken down into smaller, manageable sub-modules or files.
+- **Reference:** When unsure about structuring a module, refer to the patterns used in the `marmotedu` reference projects (located at `/Users/martinguo/Documents/MCP/marmotedu`).
+
 ## Development Workflow: Task Logs
 
 **Strict Requirement:** Every significant development task (e.g., implementing a feature from [requirements_en.md](mdc:docs/requirements/requirements_en.md), fixing a major bug) **MUST** have a corresponding development log file in the [docs/devlogs/](mdc:docs/devlogs) directory.
@@ -60,5 +75,6 @@ The project will follow a standard Go project layout, similar to `marmotedu/iam`
 - **File Naming:** Use descriptive names, preferably linking to the requirement ID or issue number (e.g., `fr001-config-management.md`, `bugfix-auth-issue-123.md`).
 - **Content:** Each log file should track the specific task's objective, plan, sub-tasks, relevant code snippets, discussions, decisions made, problems encountered, and solutions found.
 - **Process:** Before starting work on a task, ensure its log file exists or create it. All subsequent communication and code changes related to that task should reference and update this log file. This ensures focus and traceability.
+- **Troubleshooting Review:** When encountering issues or debugging, **always review existing troubleshooting records** in the [docs/troubleshooting/](mdc:docs/troubleshooting) directory first. This helps prevent repeating past mistakes and leverages collective knowledge.
 
 **AI Assistant Responsibility:** Always ask for or identify the relevant devlog file when working on a specific task. Ensure all context and decisions are captured within that file.

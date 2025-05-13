@@ -9,13 +9,19 @@ package config
 import (
 	"log"
 	"reflect"
-	"time"
-
-	"github.com/spf13/viper"
+	// "time" // No longer needed after removing GetDuration
+	// "github.com/spf13/viper" // No longer needed after removing viper dependent accessors
 )
 
-// updateGlobalCfg 尝试更新全局 Cfg 变量
-// (updateGlobalCfg tries to update the global Cfg variable)
+// updateGlobalCfg 尝试根据传入的配置结构体 `cfg` 更新全局配置变量 `config.Cfg`。
+// 它会检查 `cfg` 是否直接是 `*config.Config`，或者是否嵌入了 `config.Config`，
+// 或者是否包含一个指向已初始化 `*config.Config` 的指针字段。
+// (updateGlobalCfg attempts to update the global configuration variable `config.Cfg` based on the provided config struct `cfg`.)
+// (It checks if `cfg` is directly `*config.Config`, or if it embeds `config.Config`,
+// or if it contains an initialized pointer field to `*config.Config`.)
+// Parameters:
+//   cfg: 指向用户加载的配置结构体的指针。
+//        (A pointer to the user-loaded configuration struct.)
 func updateGlobalCfg[T any](cfg *T) {
 	targetVal := reflect.ValueOf(cfg).Elem() // Assuming cfg is always a pointer to the user's config struct
 
@@ -65,60 +71,7 @@ func updateGlobalCfg[T any](cfg *T) {
 	log.Println("Warning: Global Cfg variable was not updated. Provided type is not *config.Config and does not embed config.Config, nor does it contain an initialized pointer field to *config.Config.")
 }
 
-// GetString 从加载的配置中获取字符串值 (Gets a string value from the loaded config)
-// 注意：这些 Getters 依赖于 LoadConfig 正确更新了全局 Cfg
-// (Note: These Getters rely on LoadConfig having correctly updated the global Cfg)
-// 警告：访问的是 Viper 的默认实例，可能不准确。推荐直接访问 Cfg 变量。
-// (Warning: Accesses Viper's default instance, which might be inaccurate. Recommend accessing the Cfg variable directly.)
-func GetString(key string) string {
-	log.Println("Warning: GetString(key) accesses the default Viper instance, which might not reflect the loaded Cfg struct accurately after initial load or hot reload. Access fields via the Cfg variable directly.")
-	return viper.GetString(key) // Accesses viper's global instance, potentially inaccurate
-}
-
-// GetInt 从加载的配置中获取整数值 (Gets an integer value from the loaded config)
-// 警告：访问的是 Viper 的默认实例，可能不准确。推荐直接访问 Cfg 变量。
-// (Warning: Accesses Viper's default instance, which might be inaccurate. Recommend accessing the Cfg variable directly.)
-func GetInt(key string) int {
-	log.Println("Warning: GetInt(key) accesses the default Viper instance, which might not reflect the loaded Cfg struct accurately. Access fields via the Cfg variable directly.")
-	return viper.GetInt(key)
-}
-
-// GetBool 从加载的配置中获取布尔值 (Gets a boolean value from the loaded config)
-// 警告：访问的是 Viper 的默认实例，可能不准确。推荐直接访问 Cfg 变量。
-// (Warning: Accesses Viper's default instance, which might be inaccurate. Recommend accessing the Cfg variable directly.)
-func GetBool(key string) bool {
-	log.Println("Warning: GetBool(key) accesses the default Viper instance, which might not reflect the loaded Cfg struct accurately. Access fields via the Cfg variable directly.")
-	return viper.GetBool(key)
-}
-
-// GetDuration 从加载的配置中获取时间段值 (Gets a time duration value from the loaded config)
-// 警告：访问的是 Viper 的默认实例，可能不准确。推荐直接访问 Cfg 变量。
-// (Warning: Accesses Viper's default instance, which might be inaccurate. Recommend accessing the Cfg variable directly.)
-func GetDuration(key string) time.Duration {
-	log.Println("Warning: GetDuration(key) accesses the default Viper instance, which might not reflect the loaded Cfg struct accurately. Access fields via the Cfg variable directly.")
-	return viper.GetDuration(key)
-}
-
-// GetStringSlice 从加载的配置中获取字符串切片值 (Gets a string slice value from the loaded config)
-// 警告：访问的是 Viper 的默认实例，可能不准确。推荐直接访问 Cfg 变量。
-// (Warning: Accesses Viper's default instance, which might be inaccurate. Recommend accessing the Cfg variable directly.)
-func GetStringSlice(key string) []string {
-	log.Println("Warning: GetStringSlice(key) accesses the default Viper instance, which might not reflect the loaded Cfg struct accurately. Access fields via the Cfg variable directly.")
-	return viper.GetStringSlice(key)
-}
-
-// IsSet 检查某个键是否在 Viper 默认实例中设置 (Checks if a key is set in the Viper default instance)
-// 警告：访问的是 Viper 的默认实例，可能不准确。推荐直接访问 Cfg 变量。
-// (Warning: Accesses Viper's default instance, which might be inaccurate. Recommend accessing the Cfg variable directly.)
-func IsSet(key string) bool {
-	log.Println("Warning: IsSet(key) accesses the default Viper instance, which might not reflect the loaded Cfg struct accurately. Access fields via the Cfg variable directly.")
-	return viper.IsSet(key)
-}
-
-// AllSettings 获取 Viper 默认实例的所有设置 (Gets all settings from the Viper default instance)
-// 警告：访问的是 Viper 的默认实例，可能不准确。推荐直接访问 Cfg 变量。
-// (Warning: Accesses Viper's default instance, which might be inaccurate. Recommend accessing the Cfg variable directly.)
-func AllSettings() map[string]interface{} {
-	log.Println("Warning: AllSettings() accesses the default Viper instance, which might not reflect the loaded Cfg struct accurately. Access fields via the Cfg variable directly.")
-	return viper.AllSettings()
-}
+// Note: The following accessor functions (GetString, GetInt, GetBool, GetDuration, GetStringSlice, IsSet, AllSettings)
+// have been removed. They relied on Viper's global instance and were not recommended for use.
+// Please access configuration values directly through the global `Cfg` variable (obtained via `GetGlobalCfg()`)
+// or through the specific configuration struct instance returned by `LoadConfigAndWatch`.

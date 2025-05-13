@@ -11,3 +11,6 @@ This page provides links to English usage guides for different modules within th
 
 *   **Configuration (`pkg/config`)**
     *   [English Usage Guide](./config/config_usage_en.md)
+
+*   **Logging (`pkg/log`)**
+    *   [English Usage Guide](./log/log_usage_en.md)
