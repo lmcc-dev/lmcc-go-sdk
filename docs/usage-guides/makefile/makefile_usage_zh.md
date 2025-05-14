@@ -64,7 +64,7 @@
 ## 3. 自定义 (可选)
 
 -   **添加工具**: 编辑 `scripts/make-rules/tools.mk` 文件，将新工具添加到 `TOOLS_REQUIRED` 变量中，并提供相应的 `install.<toolname>` 规则。
--   **详细输出**: 运行任何命令时加上 `V=1` 可以获取更详细的输出（例如 `make test V=1`）。
+-   **详细输出**: 运行任何命令时加上 `V=1` 可以获取更详细的输出（例如 `make test V=1`）。 
 
 ### `make doc-view PKG=./path/to/package`
 

@@ -220,12 +220,77 @@ func main() {
 
 ### 3.3. 上下文日志记录
 
--   **`Ctx(ctx context.Context, args ...any)`**: 以 InfoLevel 级别记录消息，并从上下文中提取字段（TraceID、RequestID 以及在 `Options.ContextKeys` 中指定的任何键）。
-    -   类似的 `CtxDebugf`、`CtxInfof`、`CtxWarnf`、`CtxErrorf`、`CtxFatalf`、`CtxPanicf` 也可用。
--   **`ContextWithTraceID(ctx context.Context, traceID string) context.Context`**: 返回设置了 TraceID 的新上下文。
--   **`ContextWithRequestID(ctx context.Context, requestID string) context.Context`**: 返回设置了 RequestID 的新上下文。
--   **`TraceIDFromContext(ctx context.Context) (string, bool)`**: 从上下文中提取 TraceID。
--   **`RequestIDFromContext(ctx context.Context) (string, bool)`**: 从上下文中提取 RequestID。
+`pkg/log` 模块允许您使用来自 `context.Context` 的数据来丰富您的日志消息。这对于请求追踪以及将日志与特定操作关联起来特别有用。
+
+-   **`ContextWithTraceID(ctx context.Context, traceID string) context.Context`**: 返回设置了 TraceID 的新上下文。`pkg/log` 模块内部使用一个未导出的键类型 (`pkg/log.TraceIDKey`) 来存储此值。
+-   **`ContextWithRequestID(ctx context.Context, requestID string) context.Context`**: 返回设置了 RequestID 的新上下文。与 TraceID 类似，使用一个内部键 (`pkg/log.RequestIDKey`)。
+-   **`TraceIDFromContext(ctx context.Context) (string, bool)`**: 如果存在，则从上下文中提取 TraceID。
+-   **`RequestIDFromContext(ctx context.Context) (string, bool)`**: 如果存在，则从上下文中提取 RequestID。
+
+-   **`Ctx(ctx context.Context, args ...any)`**: 以 InfoLevel 级别记录消息。它会自动从上下文中提取已识别的字段：
+    -   **追踪 ID (Trace ID)**: 使用 `TraceIDFromContext` 提取，并以字段键 **`"trace_id"`** 记录。
+    -   **请求 ID (Request ID)**: 使用 `RequestIDFromContext` 提取，并以字段键 **`"request_id"`** 记录。
+    -   **自定义键 (Custom Keys)**: 如果在记录器初始化期间填充了 `Options.ContextKeys`，这些键也将被提取。对于非简单字符串的自定义上下文键（例如结构体类型），`pkg/log` 通常使用 `fmt.Sprintf("%v", key)` 来生成日志输出中的字段名。
+
+    **示例:**
+    ```go
+    package main
+
+    import (
+    	"context"
+    	"fmt"
+    	sdklog "github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
+    	"github.com/google/uuid" // 用于生成唯一ID
+    )
+
+    // 定义一个自定义键类型 (作为高级上下文用法示例)
+    type myCustomKey struct{}
+
+    func main() {
+    	// 初始化记录器 (假设已设置opts，例如输出JSON到stdout)
+    	opts := sdklog.NewOptions()
+    	opts.Format = "json"
+    	opts.OutputPaths = []string{"stdout"}
+    	opts.Level = "info"
+    	// 要提取 'myCustomKey'，您需要将其添加到 opts.ContextKeys:
+    	// opts.ContextKeys = []any{myCustomKey{}} 
+    	sdklog.Init(opts)
+
+    	traceID := uuid.NewString()
+    	requestID := uuid.NewString()
+    	customValue := "my_custom_context_data"
+
+    	ctx := context.Background()
+    	ctx = sdklog.ContextWithTraceID(ctx, traceID)
+    	ctx = sdklog.ContextWithRequestID(ctx, requestID)
+    	ctx = context.WithValue(ctx, myCustomKey{}, customValue) // 存储自定义值
+
+    	// 使用上下文记录日志。`pkg/log` 将自动提取 trace_id 和 request_id。
+    	// 如果 myCustomKey{} 已添加到 Options.ContextKeys，它也将被提取。
+    	// 日志中 myCustomKey{} 的字段名将是其字符串表示形式，例如 "{}"
+    	sdklog.Ctx(ctx, "正在处理带有上下文数据的用户请求。")
+    
+    	// 您可能如何验证这一点的示例 (概念性的，用于测试):
+    	// 日志输出 (JSON):
+    	// {
+    	//   "level": "info",
+    	//   "timestamp": "...",
+    	//   "caller": "...",
+    	//   "message": "正在处理带有上下文数据的用户请求。",
+    	//   "trace_id": "generated-trace-id",  // 自动添加
+    	//   "request_id": "generated-request-id", // 自动添加
+    	//   "{}": "my_custom_context_data"  // 如果 myCustomKey{} 在 ContextKeys 中，且其字符串形式为 "{}"
+    	// }
+    }
+    ```
+
+-   其他级别也提供了类似的上下文感知日志记录函数：
+    -   `CtxDebugf(ctx context.Context, template string, args ...interface{})`
+    -   `CtxInfof(ctx context.Context, template string, args ...interface{})`
+    -   `CtxWarnf(ctx context.Context, template string, args ...interface{})`
+    -   `CtxErrorf(ctx context.Context, template string, args ...interface{})`
+    -   `CtxFatalf(ctx context.Context, template string, args ...interface{})` (也会退出程序)
+    -   `CtxPanicf(ctx context.Context, template string, args ...interface{})` (也会触发panic)
 
 ### 3.4. 日志记录器操作
 

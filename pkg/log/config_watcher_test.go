@@ -454,7 +454,7 @@ func TestSimulatedHotReloadTrigger(t *testing.T) { // Renamed for clarity
 	// (This will eventually call our monkey-patched currentProcessLogConfigChange)
 	err := mockCM.triggerLogSectionCallback(dummyViperInstance)
 	localRequire.NoError(err, "Triggering log section callback should not return an error")
-
+	
 	// 验证 mockV.UnmarshalKey 被调用 (Verify mockV.UnmarshalKey was called)
 	localAssert.True(mockV.errUnmarshalCalled.Load(), "UnmarshalKey on mockV should have been called within the monkey-patched logic")
 

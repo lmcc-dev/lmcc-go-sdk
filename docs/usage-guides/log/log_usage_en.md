@@ -220,12 +220,77 @@ These are available as global functions (e.g., `sdklog.Info(...)`) which use the
 
 ### 3.3. Contextual Logging
 
--   **`Ctx(ctx context.Context, args ...any)`**: Logs a message at InfoLevel, extracting fields from the context (TraceID, RequestID, and any keys specified in `Options.ContextKeys`).
-    -   Similar `CtxDebugf`, `CtxInfof`, `CtxWarnf`, `CtxErrorf`, `CtxFatalf`, `CtxPanicf` are also available.
--   **`ContextWithTraceID(ctx context.Context, traceID string) context.Context`**: Returns a new context with the TraceID set.
--   **`ContextWithRequestID(ctx context.Context, requestID string) context.Context`**: Returns a new context with the RequestID set.
--   **`TraceIDFromContext(ctx context.Context) (string, bool)`**: Extracts TraceID from context.
--   **`RequestIDFromContext(ctx context.Context) (string, bool)`**: Extracts RequestID from context.
+The `pkg/log` module allows you to enrich your log messages with data from `context.Context`. This is particularly useful for request tracing and associating logs with specific operations.
+
+-   **`ContextWithTraceID(ctx context.Context, traceID string) context.Context`**: Returns a new context with the TraceID set. The `pkg/log` module internally uses an unexported key type (`pkg/log.TraceIDKey`) to store this value.
+-   **`ContextWithRequestID(ctx context.Context, requestID string) context.Context`**: Returns a new context with the RequestID set. Similar to TraceID, an internal key (`pkg/log.RequestIDKey`) is used.
+-   **`TraceIDFromContext(ctx context.Context) (string, bool)`**: Extracts TraceID from the context, if present.
+-   **`RequestIDFromContext(ctx context.Context) (string, bool)`**: Extracts RequestID from the context, if present.
+
+-   **`Ctx(ctx context.Context, args ...any)`**: Logs a message at InfoLevel. It automatically extracts recognized fields from the context:
+    -   **Trace ID**: Extracted using `TraceIDFromContext` and logged with the field key **`"trace_id"`**.
+    -   **Request ID**: Extracted using `RequestIDFromContext` and logged with the field key **`"request_id"`**.
+    -   **Custom Keys**: If `Options.ContextKeys` is populated during logger initialization, those keys will also be extracted. For custom context keys that are not simple strings (e.g., struct types), `pkg/log` typically uses `fmt.Sprintf("%v", key)` to generate the field name in the log output.
+
+    **Example:**
+    ```go
+    package main
+
+    import (
+    	"context"
+    	"fmt"
+    	sdklog "github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
+    	"github.com/google/uuid" // For generating unique IDs
+    )
+
+    // Define a custom key type (as an example for advanced context usage)
+    type myCustomKey struct{}
+
+    func main() {
+    	// Initialize logger (assuming opts are set, e.g., to output JSON to stdout)
+    	opts := sdklog.NewOptions()
+    	opts.Format = "json"
+    	opts.OutputPaths = []string{"stdout"}
+    	opts.Level = "info"
+    	// To extract 'myCustomKey', you would add it to opts.ContextKeys:
+    	// opts.ContextKeys = []any{myCustomKey{}} 
+    	sdklog.Init(opts)
+
+    	traceID := uuid.NewString()
+    	requestID := uuid.NewString()
+    	customValue := "my_custom_context_data"
+
+    	ctx := context.Background()
+    	ctx = sdklog.ContextWithTraceID(ctx, traceID)
+    	ctx = sdklog.ContextWithRequestID(ctx, requestID)
+    	ctx = context.WithValue(ctx, myCustomKey{}, customValue) // Store custom value
+
+    	// Log with context. `pkg/log` will automatically pick up trace_id and request_id.
+    	// If myCustomKey{} was added to Options.ContextKeys, it would also be picked up.
+    	// The field name for myCustomKey{} in the log would be its string representation, e.g., "{}"
+    	sdklog.Ctx(ctx, "Processing user request with contextual data.")
+    	
+    	// Example of how you might verify this (conceptual, for a test):
+    	// Log output (JSON):
+    	// {
+    	//   "level": "info",
+    	//   "timestamp": "...",
+    	//   "caller": "...",
+    	//   "message": "Processing user request with contextual data.",
+    	//   "trace_id": "generated-trace-id",  // Automatically added
+    	//   "request_id": "generated-request-id", // Automatically added
+    	//   "{}": "my_custom_context_data"  // If myCustomKey{} was in ContextKeys, and its string form is "{}"
+    	// }
+    }
+    ```
+
+-   Similar context-aware logging functions are available for other levels:
+    -   `CtxDebugf(ctx context.Context, template string, args ...interface{})`
+    -   `CtxInfof(ctx context.Context, template string, args ...interface{})`
+    -   `CtxWarnf(ctx context.Context, template string, args ...interface{})`
+    -   `CtxErrorf(ctx context.Context, template string, args ...interface{})`
+    -   `CtxFatalf(ctx context.Context, template string, args ...interface{})` (also exits)
+    -   `CtxPanicf(ctx context.Context, template string, args ...interface{})` (also panics)
 
 ### 3.4. Logger Manipulation
 

@@ -80,11 +80,11 @@ func UnregisterCallback(id string) {
 	// S1033: unnecessary guard around call to delete (gosimple) is addressed by removing the if.
 	// In Go, deleting a non-existent key from a map is a no-op and safe.
 	// (在 Go 中，从 map 中删除不存在的键是空操作且安全的。)
-	delete(callbacks, id)
+		delete(callbacks, id)
 	// The empty else branch (previously SA9003) is removed as the preceding if is removed.
 	// TODO: Log unregistration if the key existed, or warn if it didn't if that's desired behavior.
-	// Info("Unregistered log configuration callback", "id", id)
-	// Warn("Attempted to unregister non-existent log configuration callback", "id", id)
+		// Info("Unregistered log configuration callback", "id", id)
+		// Warn("Attempted to unregister non-existent log configuration callback", "id", id)
 }
 
 // RegisterConfigHotReload 注册日志配置的热重载回调到配置管理器。
@@ -167,7 +167,7 @@ func defaultHandleGlobalLogConfigChange(v *viper.Viper) error {
 // For example: config.RegisterSectionChangeCallback("log", handleGlobalLogConfigChange)
 
 // TODO: Consider how to handle initial configuration loading. Does pkg/log's Init
-//       need to be aware of this watcher, or does the watcher get triggered after initial load?
+//       need to be aware of this watcher, or does the watcher get triggered after initial load? 
 
 // ClearAllCallbacks removes all registered callbacks. Used primarily for testing.
 // ... existing code ... 

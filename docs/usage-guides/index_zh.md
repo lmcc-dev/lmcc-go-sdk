@@ -10,7 +10,7 @@
     *   [中文使用指南](./makefile/makefile_usage_zh.md)
 
 *   **配置 (`pkg/config`)**
-    *   [中文使用指南](./config/config_usage_zh.md)
+    *   [中文使用指南](./config/config_usage_zh.md) 
 
 *   **日志 (`pkg/log`)**
     *   [中文使用指南](./log/log_usage_zh.md) 
