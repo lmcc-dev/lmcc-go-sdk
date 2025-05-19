@@ -130,9 +130,9 @@ func TestReconfigureGlobalLogger_Basic(t *testing.T) {
 	// (Verify the content of the reconfigured log file)
 	localAssert.NotEmpty(fileContent, "Reconfigured log file should not be empty")
 	localAssert.Contains(fileContent, reconfiguredMsgDebug, "Reconfigured file content should contain the DEBUG message")
-	localAssert.Contains(fileContent, `"level":"debug"`, "Reconfigured file content should indicate DEBUG level")
+	localAssert.Contains(fileContent, `"L":"DEBUG"`, "Reconfigured file content should indicate DEBUG level")
 	localAssert.Contains(fileContent, reconfiguredMsgInfo, "Reconfigured file content should contain the INFO message")
-	localAssert.Contains(fileContent, `"level":"info"`, "Reconfigured file content should indicate INFO level")
+	localAssert.Contains(fileContent, `"L":"INFO"`, "Reconfigured file content should indicate INFO level")
 	localAssert.True(strings.HasPrefix(strings.TrimSpace(fileContent), "{"), "Log content should start with '{' indicating JSON")
 	localAssert.True(strings.HasSuffix(strings.TrimSpace(fileContent), "}"), "Log content should end with '}' indicating JSON")
 	localAssert.NotContains(fileContent, initialMsg, "Reconfigured file content should NOT contain the initial message")
@@ -227,7 +227,7 @@ func TestReconfigureGlobalLogger_Concurrent(t *testing.T) {
 
 	if len(content2) > 0 {
 		file2Content := string(content2)
-		localAssert.Contains(file2Content, `"level":"debug"`, "logFile2 should contain debug level messages")
+		localAssert.Contains(file2Content, `"L":"DEBUG"`, "logFile2 should contain debug level messages")
 		localAssert.Contains(file2Content, "Logger reconfigured during concurrent operations.", "logFile2 should contain the reconfiguration debug message")
 	}
 
@@ -376,7 +376,7 @@ func TestReconfigureGlobalLogger(t *testing.T) {
 		log.Init(log.NewOptions())
 		_ = log.Sync()
 	})
-}
+} 
 
 // TestHotReloadWithValidConfig simulates a hot reload scenario with a valid new configuration.
 // ... existing code ... 

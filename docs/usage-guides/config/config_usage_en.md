@@ -17,11 +17,38 @@ The `pkg/config` package provides a flexible system for managing application con
 ## 2. Integration Guide
 
 1.  **Define Your Config Struct:** Embed `sdkconfig.Config` into your application's config struct and add custom fields.
+    The `sdkconfig.Config` struct itself contains predefined configuration sections like `Server`, `Log`, `Database`, `Tracing`, and `Metrics`. The detailed fields for the `Log` section (`sdkconfig.LogConfig`) are as follows:
 
     ```go
     package main
 
-    import sdkconfig "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+    import (
+        sdkconfig "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+        // "time" // if your custom config sections use time.Duration
+    )
+
+    // Detailed structure of LogConfig (usually defined within sdkconfig, listed here for reference)
+    /*
+    type LogConfig struct {
+        Level             string   `mapstructure:"level" default:"info"`
+        Format            string   `mapstructure:"format" default:"text"`
+        EnableColor       bool     `mapstructure:"enableColor" default:"false"`
+        Output            string   `mapstructure:"output" default:"stdout"` // Legacy single output, recommend using outputPaths
+        OutputPaths       []string `mapstructure:"outputPaths"`
+        ErrorOutput       string   `mapstructure:"errorOutput" default:"stderr"` // Legacy single error output, recommend using errorOutputPaths
+        ErrorOutputPaths  []string `mapstructure:"errorOutputPaths"`
+        Filename          string   `mapstructure:"filename" default:"app.log"` // Specific filename for rotation
+        MaxSize           int      `mapstructure:"maxSize" default:"100"`
+        MaxBackups        int      `mapstructure:"maxBackups" default:"5"`
+        MaxAge            int      `mapstructure:"maxAge" default:"7"`
+        Compress          bool     `mapstructure:"compress" default:"false"`
+        DisableCaller     bool     `mapstructure:"disableCaller" default:"false"`
+        DisableStacktrace bool     `mapstructure:"disableStacktrace" default:"false"`
+        Development       bool     `mapstructure:"development" default:"false"`
+        Name              string   `mapstructure:"name"`
+        ContextKeys       []string `mapstructure:"contextKeys"`
+    }
+    */
 
     type CustomFeatureConfig struct {
     	APIKey    string `mapstructure:"apiKey"`
@@ -30,11 +57,26 @@ The `pkg/config` package provides a flexible system for managing application con
     }
 
     type MyAppConfig struct {
-    	sdkconfig.Config                 // Embed SDK base config
+    	sdkconfig.Config                 // Embed SDK base config (includes Server, Log, Database, etc.)
     	CustomFeature *CustomFeatureConfig `mapstructure:"customFeature"`
     }
 
     var AppConfig MyAppConfig
+    ```
+    You can configure all the above fields under the `log` section in your `config.yaml` file, for instance:
+    ```yaml
+    # config.yaml snippet
+    log:
+      level: "debug"
+      format: "json"
+      enableColor: false # Color usually not needed for JSON format
+      outputPaths: ["stdout", "./app.log"]
+      errorOutputPaths: ["stderr", "./app_error.log"]
+      maxSize: 50
+      # ... other LogConfig fields ...
+      disableCaller: false
+      name: "my-awesome-app"
+      contextKeys: ["user_id", "session_id"]
     ```
 
 2.  **Load Configuration (Recommended: Use `LoadConfigAndWatch`)**: Use `sdkconfig.LoadConfigAndWatch` at application startup. This is the recommended approach as it provides hot-reload and callback capabilities.
@@ -161,4 +203,4 @@ The following general commands are relevant for development and testing of this 
 -   `make test-unit PKG=./pkg/config`: Runs unit tests for `pkg/config`.
 -   `make cover PKG=./pkg/config`: Runs unit tests with coverage analysis for `pkg/config`.
 -   `make lint`: Runs linters, which include checks on `pkg/config`.
--   `make format`: Formats the Go code in `pkg/config`.
+-   `make format`: Formats the Go code in `pkg/config`. 

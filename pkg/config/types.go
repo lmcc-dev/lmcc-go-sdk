@@ -62,14 +62,23 @@ type ServerConfig struct {
 
 // LogConfig 日志相关配置 (Logging related configuration)
 type LogConfig struct {
-	Level      string `mapstructure:"level" default:"info"`
-	Format     string `mapstructure:"format" default:"text"`
-	Output     string `mapstructure:"output" default:"stdout"`
-	Filename   string `mapstructure:"filename" default:"app.log"`
-	MaxSize    int    `mapstructure:"maxSize" default:"100"`
-	MaxBackups int    `mapstructure:"maxBackups" default:"5"`
-	MaxAge     int    `mapstructure:"maxAge" default:"7"`
-	Compress   bool   `mapstructure:"compress" default:"false"`
+	Level             string   `mapstructure:"level" default:"info"`
+	Format            string   `mapstructure:"format" default:"text"`
+	EnableColor       bool     `mapstructure:"enableColor" default:"false"`
+	Output            string   `mapstructure:"output" default:"stdout"`
+	OutputPaths       []string `mapstructure:"outputPaths"`
+	ErrorOutput       string   `mapstructure:"errorOutput" default:"stderr"`
+	ErrorOutputPaths  []string `mapstructure:"errorOutputPaths"`
+	Filename          string   `mapstructure:"filename" default:"app.log"`
+	MaxSize           int      `mapstructure:"maxSize" default:"100"`
+	MaxBackups        int      `mapstructure:"maxBackups" default:"5"`
+	MaxAge            int      `mapstructure:"maxAge" default:"7"`
+	Compress          bool     `mapstructure:"compress" default:"false"`
+	DisableCaller     bool     `mapstructure:"disableCaller" default:"false"`
+	DisableStacktrace bool     `mapstructure:"disableStacktrace" default:"false"`
+	Development       bool     `mapstructure:"development" default:"false"`
+	Name              string   `mapstructure:"name"`
+	ContextKeys       []string `mapstructure:"contextKeys"`
 }
 
 // DatabaseConfig 数据库相关配置 (Database related configuration)

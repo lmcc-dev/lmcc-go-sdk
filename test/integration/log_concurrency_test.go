@@ -144,8 +144,8 @@ func TestConcurrentLoggingWithContext(t *testing.T) {
 	// 从消息字符串中提取 goroutineID 以进行验证，按 goroutineID 分组消息
 	messagesByGoroutine := make(map[string][]map[string]interface{})
 	for _, entry := range loggedMessages {
-		msg, ok := entry["message"].(string) // "message" is the standard key in JSON logs ("message" 是 JSON 日志中的标准消息键)
-		require.True(t, ok, "Log entry missing message field 'message' (日志条目缺少消息字段 'message')")
+		msg, ok := entry["M"].(string) // Changed "message" to "M"
+		require.True(t, ok, "Log entry missing message field 'M' (日志条目缺少消息字段 'M')") // Updated error message as well
 
 		// Extract goroutineID from message: "Message X from goroutine Y"
 		// 从消息中提取 goroutineID："Message X from goroutine Y"

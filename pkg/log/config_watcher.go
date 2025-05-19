@@ -13,9 +13,9 @@ import (
 	"sync"
 
 	"fmt"
-	"strings"
 
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+	merrors "github.com/marmotedu/errors" // 导入 marmotedu/errors 包 (Import marmotedu/errors package)
 	"github.com/spf13/viper"
 )
 
@@ -105,7 +105,9 @@ func RegisterConfigHotReload(cfgManager config.Manager) {
 			// 这是一个防御性检查，理论上 currentProcessLogConfigChange 总是在 init 中被设置。
 			// (This is a defensive check; currentProcessLogConfigChange should always be set in init.)
 			Error("Log configuration change processor is not initialized.")
-			return fmt.Errorf("log configuration change processor is not initialized")
+			// 使用 merrors.New 创建错误，以包含堆栈跟踪。
+			// (Use merrors.New to create an error with a stack trace.)
+			return merrors.New("log configuration change processor is not initialized")
 		}
 		return currentProcessLogConfigChange(v)
 	})
@@ -121,27 +123,40 @@ func defaultHandleGlobalLogConfigChange(v *viper.Viper) error {
 	defer callbacksMu.RUnlock()
 
 	// 1. Parse the new log options from the viper instance.
+	//    (从 viper 实例解析新的日志选项。)
 	opts := NewOptions()
 	if err := v.UnmarshalKey("log", opts); err != nil {
+		// 使用 merrors.Wrap 包装错误，以添加堆栈跟踪和上下文。
+		// (Wrap the error with merrors.Wrap to add stack trace and context.)
 		Error("Failed to unmarshal new log configuration", "error", err)
-		return err
+		return merrors.Wrap(err, "failed to unmarshal new log configuration from viper")
 	}
 
 	// 2. Validate the new options (e.g., level, format are valid)
+	//    (验证新选项（例如，级别、格式是否有效）)
 	errs := opts.Validate()
 	if len(errs) > 0 {
-		errMsgs := make([]string, len(errs))
-		for i, e := range errs {
-			errMsgs[i] = e.Error()
-		}
-		Error("Validation failed for new log options", "errors", strings.Join(errMsgs, "; "), "options", opts)
-		return fmt.Errorf("log options validation errors: %s", strings.Join(errMsgs, "; "))
+		// No need to manually join error messages for merrors.NewAggregate
+		// (使用 merrors.NewAggregate 时无需手动连接错误消息)
+		// errMsgs := make([]string, len(errs))
+		// for i, e := range errs {
+		// 	errMsgs[i] = e.Error()
+		// }
+		// Error("Validation failed for new log options", "errors", strings.Join(errMsgs, "; "), "options", opts)
+		// The Error log above is kept as it provides structured details. The merrors.Wrap will provide the stack trace.
+		// (上面的 Error 日志被保留，因为它提供了结构化的详细信息。merrors.Wrap 将提供堆栈跟踪。)
+		Error("Validation failed for new log options", "errors", errs, "options", opts) // Log the original errors slice for detail
+		// 使用 merrors.NewAggregate 将多个错误合并，然后使用 merrors.Wrap 添加上下文和堆栈跟踪。
+		// (Use merrors.NewAggregate to combine multiple errors, then merrors.Wrap to add context and stack trace.)
+		return merrors.Wrap(merrors.NewAggregate(errs), "log options validation failed")
 	}
 
 	// 3. Apply the new configuration to the global logger.
 	if err := ReconfigureGlobalLogger(opts); err != nil {
+		// 使用 merrors.Wrap 包装错误，以添加堆栈跟踪和上下文。
+		// (Wrap the error with merrors.Wrap to add stack trace and context.)
 		Error("Failed to reconfigure global logger with new options", "error", err)
-		return err // Potentially revert or take other corrective action
+		return merrors.Wrap(err, "failed to reconfigure global logger")
 	}
 
 	Info("Global logger successfully reconfigured with new options.", "options", opts)

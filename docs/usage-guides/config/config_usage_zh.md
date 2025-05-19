@@ -17,11 +17,38 @@
 ## 2. 接入指引
 
 1.  **定义您的配置结构体:** 在您的应用程序中创建一个结构体，嵌入 `sdkconfig.Config` 并添加自定义字段。
+    `sdkconfig.Config` 结构自身包含了预定义的配置节，如 `Server`, `Log`, `Database`, `Tracing`, `Metrics`。其中 `Log` 节 (`sdkconfig.LogConfig`) 的详细字段如下：
 
     ```go
     package main
 
-    import sdkconfig "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+    import (
+        sdkconfig "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+        // "time" // 如果您的自定义配置部分使用了 time.Duration
+    )
+
+    // LogConfig 的详细结构 (通常定义在 sdkconfig 包内部，此处列出以供参考)
+    /*
+    type LogConfig struct {
+        Level             string   `mapstructure:"level" default:"info"`
+        Format            string   `mapstructure:"format" default:"text"`
+        EnableColor       bool     `mapstructure:"enableColor" default:"false"`
+        Output            string   `mapstructure:"output" default:"stdout"` // 旧版单输出，建议使用 outputPaths
+        OutputPaths       []string `mapstructure:"outputPaths"`
+        ErrorOutput       string   `mapstructure:"errorOutput" default:"stderr"` // 旧版单错误输出，建议使用 errorOutputPaths
+        ErrorOutputPaths  []string `mapstructure:"errorOutputPaths"`
+        Filename          string   `mapstructure:"filename" default:"app.log"` // 用于轮转的特定文件名
+        MaxSize           int      `mapstructure:"maxSize" default:"100"`
+        MaxBackups        int      `mapstructure:"maxBackups" default:"5"`
+        MaxAge            int      `mapstructure:"maxAge" default:"7"`
+        Compress          bool     `mapstructure:"compress" default:"false"`
+        DisableCaller     bool     `mapstructure:"disableCaller" default:"false"`
+        DisableStacktrace bool     `mapstructure:"disableStacktrace" default:"false"`
+        Development       bool     `mapstructure:"development" default:"false"`
+        Name              string   `mapstructure:"name"`
+        ContextKeys       []string `mapstructure:"contextKeys"`
+    }
+    */
 
     type CustomFeatureConfig struct {
     	APIKey    string `mapstructure:"apiKey"`
@@ -30,11 +57,26 @@
     }
 
     type MyAppConfig struct {
-    	sdkconfig.Config                 // 嵌入 SDK 基础配置
+    	sdkconfig.Config                 // 嵌入 SDK 基础配置 (包含 Server, Log, Database 等)
     	CustomFeature *CustomFeatureConfig `mapstructure:"customFeature"`
     }
 
     var AppConfig MyAppConfig
+    ```
+    您可以在您的 `config.yaml` 文件中配置 `log` 节下的上述所有字段，例如：
+    ```yaml
+    # config.yaml 片段
+    log:
+      level: "debug"
+      format: "json"
+      enableColor: false # JSON 格式下通常不需要颜色
+      outputPaths: ["stdout", "./app.log"]
+      errorOutputPaths: ["stderr", "./app_error.log"]
+      maxSize: 50
+      # ... 其他 LogConfig 字段 ...
+      disableCaller: false
+      name: "my-awesome-app"
+      contextKeys: ["user_id", "session_id"]
     ```
 
 2.  **加载配置 (推荐: 使用 `LoadConfigAndWatch`)**: 在应用程序启动时调用 `sdkconfig.LoadConfigAndWatch`。这是推荐的方式，因为它提供了热重载和回调功能。

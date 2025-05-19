@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic" // Added for atomic.Pointer
 
+	merrors "github.com/marmotedu/errors" // 导入 marmotedu/errors 包 (Import marmotedu/errors package)
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -99,8 +100,6 @@ type Logger interface {
 	GetZapLogger() *zap.Logger
 
 	// --- Contextual Logging ---
-	// TODO(Martin/AI): Implement contextual logging methods
-
 	// CtxDebugf uses fmt.Sprintf to log a templated message at DebugLevel.
 	// It extracts fields from the context using pre-configured keys.
 	CtxDebugf(ctx context.Context, template string, args ...interface{})
@@ -200,7 +199,9 @@ func Std() Logger {
 //          (Returns an error if newOpts is nil. May also return an error if creating the new logger instance fails (e.g., invalid options).)
 func ReconfigureGlobalLogger(newOpts *Options) error {
 	if newOpts == nil {
-		return fmt.Errorf("cannot reconfigure global logger with nil options")
+		// 使用 merrors.New 创建错误，以包含堆栈跟踪。
+		// (Use merrors.New to create an error with a stack trace.)
+		return merrors.New("cannot reconfigure global logger with nil options")
 	}
 	// 假设 newLogger 会对 newOpts 进行校验，如果选项无效可能会 panic 或返回可区分的错误
 	// (Assuming newLogger validates newOpts and might panic or return a distinguishable error for invalid options)
@@ -234,7 +235,7 @@ func newLogger(opts *Options) *logger { // Changed return type to *logger
 		MessageKey:     "message",
 		LevelKey:       "level",
 		TimeKey:        "timestamp",
-		NameKey:        "logger",
+		NameKey:        "logger", // NameKey is "logger", will be used if logger has a name
 		CallerKey:      "caller",
 		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
@@ -242,78 +243,94 @@ func newLogger(opts *Options) *logger { // Changed return type to *logger
 		EncodeTime:     zapcore.ISO8601TimeEncoder,
 		EncodeDuration: zapcore.SecondsDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,
-		EncodeName:     zapcore.FullNameEncoder,
+		EncodeName:     zapcore.FullNameEncoder, // Ensures the full name is encoded if present
 	}
 
 	var encoder zapcore.Encoder
 	if opts.Format == FormatText {
-		// 配置控制台编码器 (Configure console encoder)
 		if opts.EnableColor {
-			encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+			encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder // Colored level for text
 		}
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
-	} else {
-		// 配置 JSON 编码器 (Configure JSON encoder)
-		encoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder // Lowercase for JSON
+	} else if opts.Format == FormatJSON {
+		encoderConfig.LevelKey = "L" // Use "L" for level in JSON as per common practice
+		encoderConfig.TimeKey = "T"
+		encoderConfig.MessageKey = "M"
+		encoderConfig.CallerKey = "C"
+		encoderConfig.NameKey = "N" // Use "N" for name in JSON
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
+	} else {
+		// Fallback to JSON encoder if format is unknown
+		// (如果格式未知，则回退到 JSON 编码器)
+		encoderConfig.LevelKey = "L"
+		encoderConfig.TimeKey = "T"
+		encoderConfig.MessageKey = "M"
+		encoderConfig.CallerKey = "C"
+		encoderConfig.NameKey = "N"
+		encoder = zapcore.NewJSONEncoder(encoderConfig)
+		// Optionally log a warning that an unknown format was specified
+		// (可以选择性地记录一个警告，说明指定了未知格式)
+		// fmt.Fprintf(os.Stderr, "Unknown log format \\"%s\\", defaulting to JSON\\n", opts.Format)
 	}
 
-	// 配置写入器 (Configure WriteSyncer)
+	// 获取写入器 (Get writer syncer)
 	writeSyncer, err := getWriteSyncer(opts)
 	if err != nil {
-		// 如果为 OutputPaths 创建 syncer 失败，记录错误并回退到 stderr
-		// (If creating syncer for OutputPaths fails, log error and fallback to stderr)
-		fmt.Fprintf(os.Stderr, "Failed to create write syncer for output-paths %v: %v. Falling back to stderr.\n", opts.OutputPaths, err)
-		writeSyncer = zapcore.Lock(os.Stderr)
+		// 如果获取写入器失败，打印错误到 stderr 并 panic
+		// (If getting writer syncer fails, print error to stderr and panic)
+		// This is a critical failure, as logging cannot proceed.
+		// (这是一个严重错误，因为日志记录无法继续。)
+		fmt.Fprintf(os.Stderr, "Failed to get write syncer: %v\\n", err)
+		panic(fmt.Sprintf("Failed to get write syncer: %v", err))
 	}
 
-	// 单独为 ErrorOutputPaths 创建写入器，如果失败则回退到 stderr
-	// (Create writer specifically for ErrorOutputPaths, fallback to stderr on failure)
-	var errorWriteSyncer zapcore.WriteSyncer
-	if len(opts.ErrorOutputPaths) > 0 {
-		errorWriteSyncer, err = getWriteSyncerForPaths(opts.ErrorOutputPaths, opts) // Use a helper to avoid confusion
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create write syncer for error-output-paths %v: %v. Falling back to stderr.\n", opts.ErrorOutputPaths, err)
-			errorWriteSyncer = zapcore.Lock(os.Stderr)
-		}
-	} else {
-		// 如果未配置 ErrorOutputPaths，默认使用 stderr
-		// (If ErrorOutputPaths is not configured, default to stderr)
-		errorWriteSyncer = zapcore.Lock(os.Stderr)
-	}
-
-	// 创建 zap core (Create zap core)
 	core := zapcore.NewCore(encoder, writeSyncer, zapLevel)
 
-	// 收集 zap 选项 (Collect zap options)
-	var zapOpts []zap.Option
-	zapOpts = append(zapOpts, zap.ErrorOutput(errorWriteSyncer)) // Use the specifically created error syncer
-	if !opts.DisableCaller {
-		zapOpts = append(zapOpts, zap.AddCaller())
-		// CallerSkip = 1 means skip the wrapper funcs (e.g. Debug, Info) in this file.
-		// This is generally correct for direct logger calls.
-		zapOpts = append(zapOpts, zap.AddCallerSkip(1))
+	zapOptions := []zap.Option{
+		zap.AddCaller(), // 总是添加调用者信息 (Always add caller info)
+		// 根据 opts.DisableStacktrace 来决定是否添加 zap 自己的堆栈跟踪
+		// (Decide whether to add zap's own stack trace based on opts.DisableStacktrace)
+		// 注意：这与 marmotedu/errors 的 errorVerbose 堆栈是分开的
+		// (Note: This is separate from marmotedu/errors' errorVerbose stack)
+		// 如果 opts.DisableStacktrace 为 true，我们不希望 zap 自动添加堆栈
+		// (If opts.DisableStacktrace is true, we don't want zap to add stack traces automatically)
 	}
 	if !opts.DisableStacktrace {
-		zapOpts = append(zapOpts, zap.AddStacktrace(zapcore.ErrorLevel))
+		zapOptions = append(zapOptions, zap.AddStacktrace(zapcore.ErrorLevel)) // ErrorLevel 及以上级别日志会自动附加堆栈跟踪 (ErrorLevel and above will automatically attach stack traces)
 	}
+
+	// 如果 Development 模式开启，配置特定的开发日志选项
+	// (If Development mode is on, configure specific development logging options)
 	if opts.Development {
-		zapOpts = append(zapOpts, zap.Development())
+		// Development 该选项会更改 DPanic 日志的行为，使其在开发模式下 panic
+		// (The Development option changes the behavior of DPanic logs to panic in development mode)
+		zapOptions = append(zapOptions, zap.Development())
 	}
 
-	// 创建 zap logger (Create zap logger)
-	zapLogger := zap.New(core, zapOpts...)
+	// 为了让 "caller" 字段显示应用代码的调用位置，而不是 pkg/log 内部的位置
+	// For the "caller" field to show the call site in application code, not within pkg/log
+	// 需要跳过 sdklog 本身的封装层。通常是2层 (e.g., Debug -> sugar.Debug -> ...)
+	// We need to skip sdklog's own wrapper layers. Usually 2 levels (e.g., Debug -> sugar.Debug -> ...)
+	// 如果你的全局函数 (如 log.Info) 直接调用 logger 实例的方法 (如 l.Info),
+	// 而实例方法又直接调用 zapLogger.Sugar().Info(), 那么从应用代码到 zap 核心是2层。
+	// 实际跳过的层级可能需要根据具体调用链调整。
+	// If your global functions (like log.Info) directly call logger instance methods (like l.Info),
+	// and instance methods directly call zapLogger.Sugar().Info(), then it's 2 levels from app code to zap core.
+	// The actual number of skipped levels might need adjustment based on the specific call chain.
+	zapOptions = append(zapOptions, zap.AddCallerSkip(1)) // 先尝试跳过1层，通常是 sugar 封装。如果还不够，可以调整为2。
 
-	// 应用 logger 名称 (Apply logger name)
+
+	finalLogger := zap.New(core, zapOptions...)
+
+	// 如果 opts.Name 非空，则为 logger 设置名称
+	// (If opts.Name is not empty, set the name for the logger)
 	if opts.Name != "" {
-		zapLogger = zapLogger.Named(opts.Name)
+		finalLogger = finalLogger.Named(opts.Name)
 	}
 
-	// 返回我们自己的 logger 实现，包装配置好的 zap logger
-	// (Return our own logger implementation wrapping the configured zap logger)
 	return &logger{
-		zapLogger: zapLogger,
-		opts:      opts, // Store the potentially modified opts
+		zapLogger: finalLogger,
+		opts:      opts, // Store the applied options
 	}
 }
 
@@ -343,7 +360,9 @@ func getWriteSyncer(opts *Options) (zapcore.WriteSyncer, error) {
 			if err != nil {
 				// 如果创建轮转日志失败，返回错误以便 NewLogger 处理
 				// (If creating rotated log fails, return error for NewLogger to handle)
-				return nil, fmt.Errorf("failed to create rotating logger for path %s: %w", path, err)
+				// 使用 merrors.Wrapf 包装错误，以添加堆栈跟踪和上下文。
+				// (Wrap the error with merrors.Wrapf to add stack trace and context.)
+				return nil, merrors.Wrapf(err, "failed to create rotating logger for path %s", path)
 			}
 		}
 		syncers = append(syncers, syncer)
@@ -364,7 +383,9 @@ func getWriteSyncer(opts *Options) (zapcore.WriteSyncer, error) {
 // It's used by NewLogger to handle ErrorOutputPaths separately.
 func getWriteSyncerForPaths(paths []string, opts *Options) (zapcore.WriteSyncer, error) {
 	if len(paths) == 0 {
-		return nil, fmt.Errorf("no paths provided to getWriteSyncerForPaths")
+		// 使用 merrors.New 创建错误，以包含堆栈跟踪。
+		// (Use merrors.New to create an error with a stack trace.)
+		return nil, merrors.New("no paths provided to getWriteSyncerForPaths")
 	}
 	syncers := make([]zapcore.WriteSyncer, 0, len(paths))
 	for _, path := range paths {
@@ -378,7 +399,9 @@ func getWriteSyncerForPaths(paths []string, opts *Options) (zapcore.WriteSyncer,
 		default:
 			syncer, err = newRotateLogger(path, opts)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create rotating logger for path %s: %w", path, err)
+				// 使用 merrors.Wrapf 包装错误，以添加堆栈跟踪和上下文。
+				// (Wrap the error with merrors.Wrapf to add stack trace and context.)
+				return nil, merrors.Wrapf(err, "failed to create rotating logger for path %s", path)
 			}
 		}
 		syncers = append(syncers, syncer)
@@ -605,6 +628,45 @@ func WithValues(keysAndValues ...any) Logger {
 // WithName adds a new element to the global logger's name, returning a new logger.
 func WithName(name string) Logger {
 	return Std().WithName(name)
+}
+
+// --- Global Contextual Logging Convenience Functions ---
+// (全局上下文日志便捷函数)
+
+// CtxDebugf 使用 fmt.Sprintf 风格记录一条 Debug 级别的消息，并从 context 中提取字段，通过全局记录器。
+// (CtxDebugf logs a message at DebugLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+func CtxDebugf(ctx context.Context, template string, args ...interface{}) {
+	Std().CtxDebugf(ctx, template, args...)
+}
+
+// CtxInfof 使用 fmt.Sprintf 风格记录一条 Info 级别的消息，并从 context 中提取字段，通过全局记录器。
+// (CtxInfof logs a message at InfoLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+func CtxInfof(ctx context.Context, template string, args ...interface{}) {
+	Std().CtxInfof(ctx, template, args...)
+}
+
+// CtxWarnf 使用 fmt.Sprintf 风格记录一条 Warn 级别的消息，并从 context 中提取字段，通过全局记录器。
+// (CtxWarnf logs a message at WarnLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+func CtxWarnf(ctx context.Context, template string, args ...interface{}) {
+	Std().CtxWarnf(ctx, template, args...)
+}
+
+// CtxErrorf 使用 fmt.Sprintf 风格记录一条 Error 级别的消息，并从 context 中提取字段，通过全局记录器。
+// (CtxErrorf logs a message at ErrorLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+func CtxErrorf(ctx context.Context, template string, args ...interface{}) {
+	Std().CtxErrorf(ctx, template, args...)
+}
+
+// CtxPanicf 使用 fmt.Sprintf 风格记录一条 Panic 级别的消息，然后发生 panic，并从 context 中提取字段，通过全局记录器。
+// (CtxPanicf logs a message at PanicLevel using fmt.Sprintf style, then panics, extracting fields from the context, via the global logger.)
+func CtxPanicf(ctx context.Context, template string, args ...interface{}) {
+	Std().CtxPanicf(ctx, template, args...)
+}
+
+// CtxFatalf 使用 fmt.Sprintf 风格记录一条 Fatal 级别的消息，然后调用 os.Exit(1)，并从 context 中提取字段，通过全局记录器。
+// (CtxFatalf logs a message at FatalLevel using fmt.Sprintf style, then calls os.Exit(1), extracting fields from the context, via the global logger.)
+func CtxFatalf(ctx context.Context, template string, args ...interface{}) {
+	Std().CtxFatalf(ctx, template, args...)
 }
 
 // --- Contextual Logging Implementation ---

@@ -4,7 +4,19 @@ server:
   mode: "debug"
 
 log:
-  level: "trace" # Let's use a non-default level for demo
+  level: "debug" # Changed to debug for better demo
+  format: "text"  # Changed to json to show structured stacktrace
+  outputPaths:
+    - "stdout"
+  enableColor: true # Keep true, though JSON won't show colors
+  name: "simple-config-app"
+  contextKeys:
+    - "myCustomKey"
+    - "user_id"
+  maxSize: 10
+  maxBackups: 1
+  maxAge: 1
+  compress: false
 
 database:
   host: "example-db-host"

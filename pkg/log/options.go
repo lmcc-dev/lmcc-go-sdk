@@ -27,7 +27,7 @@ type Options struct {
 
 	// ErrorOutputPaths 指定了内部错误日志的输出路径。
 	// (ErrorOutputPaths specifies the output paths for internal error logs.)
-	ErrorOutputPaths []string `json:"error-output-paths" mapstructure:"error-output-paths"`
+	ErrorOutputPaths []string `json:"error-output-paths" mapstructure:"errorOutputPaths"`
 
 	// Level 指定了日志级别，例如 "debug", "info", "warn", "error", "fatal"。
 	// (Level specifies the log level, e.g., "debug", "info", "warn", "error", "fatal".)

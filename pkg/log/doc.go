@@ -41,6 +41,15 @@ Core Features:
 Basic Usage with Global Logger:
 (全局记录器基本用法：)
 
+	import (
+		"context" // Required for context examples (上下文示例需要)
+		"fmt"     // Required for Sync error handling example (Sync 错误处理示例需要)
+		"os"      // Required for Sync error handling example (Sync 错误处理示例需要)
+
+		merrors "github.com/marmotedu/errors" // Use marmotedu/errors (使用 marmotedu/errors)
+		"github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
+	)
+
 	func main() {
 		// 1. Initialize the global logger (usually once at application startup)
 		// (1. 初始化全局记录器（通常在应用程序启动时执行一次）)
@@ -67,7 +76,7 @@ Basic Usage with Global Logger:
 		log.Warnf("Configuration value %s is deprecated.", "old_setting")
 		log.Errorw("Failed to process request",
 			"request_id", "req-123",
-			"error", errors.New("something went wrong"),
+			"error", merrors.New("something went wrong from marmotedu/errors"), // Correctly use merrors.New
 		)
 
 		// 3. Context-aware logging with the global logger

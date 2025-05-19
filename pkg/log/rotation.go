@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath" // Added for EnsureDir
 
+	merrors "github.com/marmotedu/errors" // 导入 marmotedu/errors 包 (Import marmotedu/errors package)
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -19,7 +20,9 @@ import (
 func newRotateLogger(filePath string, opts *Options) (zapcore.WriteSyncer, error) {
 	// 确保日志文件所在的目录存在 (Ensure the directory for the log file exists)
 	if err := ensureDir(filePath); err != nil {
-		return nil, err // Return error if directory creation fails
+		// 使用 merrors.Wrapf 包装错误，以添加堆栈跟踪和上下文。
+		// (Wrap the error with merrors.Wrapf to add stack trace and context.)
+		return nil, merrors.Wrapf(err, "failed to ensure directory for log file %s", filePath)
 	}
 
 	// 配置 lumberjack logger (Configure lumberjack logger)
@@ -49,11 +52,15 @@ func ensureDir(filePath string) error {
 		// (Use 0755 permissions: owner rwx, group rx, others rx)
 		err = os.MkdirAll(dir, 0755)
 		if err != nil {
-			return err // Return error if MkdirAll fails
+			// 使用 merrors.Wrapf 包装错误，以添加堆栈跟踪和上下文。
+			// (Wrap the error with merrors.Wrapf to add stack trace and context.)
+			return merrors.Wrapf(err, "failed to create directory %s", dir) 
 		}
 	} else if err != nil {
 		// Stat 返回了其他错误 (Stat returned some other error)
-		return err
+		// 使用 merrors.Wrapf 包装错误。
+		// (Wrap the error with merrors.Wrapf.)
+		return merrors.Wrapf(err, "failed to stat directory %s", dir)
 	}
 	// 目录存在或已成功创建 (Directory exists or was successfully created)
 	return nil

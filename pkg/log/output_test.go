@@ -54,13 +54,13 @@ func TestFileOutputJSON(t *testing.T) {
 
 	// 断言文件内容 (Assert file content)
 	localAssert.NotEmpty(content, "Log file should not be empty")
-	localAssert.Contains(content, `"level":"debug"`, "Should contain debug level log")
-	localAssert.Contains(content, `"message":"Debug message"`, "Should contain debug message")
+	localAssert.Contains(content, `"L":"DEBUG"`, "Should contain debug level log")
+	localAssert.Contains(content, `"M":"Debug message"`, "Should contain debug message")
 	localAssert.Contains(content, `"key1":"val1"`, "Should contain debug key-value pair")
-	localAssert.Contains(content, `"level":"info"`, "Should contain info level log")
-	localAssert.Contains(content, `"message":"Info message"`, "Should contain info message")
-	localAssert.Contains(content, `"level":"warn"`, "Should contain warn level log")
-	localAssert.Contains(content, `"message":"Warn message formatted"`, "Should contain warn message")
+	localAssert.Contains(content, `"L":"INFO"`, "Should contain info level log")
+	localAssert.Contains(content, `"M":"Info message"`, "Should contain info message")
+	localAssert.Contains(content, `"L":"WARN"`, "Should contain warn level log")
+	localAssert.Contains(content, `"M":"Warn message formatted"`, "Should contain warn message")
 }
 
 // TestFileOutputText tests logging to a file in Text format.
@@ -131,6 +131,6 @@ func TestFileOutputMulti(t *testing.T) {
 	content := string(contentBytes)
 
 	localAssert.NotEmpty(content, "Log file should not be empty")
-	localAssert.Contains(content, `"message":"Multi output info"`, "File should contain info message")
-	localAssert.Contains(content, `"message":"Multi output warn"`, "File should contain warn message")
+	localAssert.Contains(content, `"M":"Multi output info"`, "File should contain info message")
+	localAssert.Contains(content, `"M":"Multi output warn"`, "File should contain warn message")
 } 

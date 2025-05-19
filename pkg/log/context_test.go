@@ -71,22 +71,22 @@ func TestCtxFunctions(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(content), "\n")
 	localRequire.Equal(4, len(lines), "Should have 4 log lines")
 
-	localAssert.Contains(lines[0], `"message":"Log with trace, request, and custom ID"`)
+	localAssert.Contains(lines[0], `"M":"Log with trace, request, and custom ID"`)
 	localAssert.Contains(lines[0], fmt.Sprintf(`"trace_id":"%s"`, testTraceID))
 	localAssert.Contains(lines[0], fmt.Sprintf(`"request_id":"%s"`, testRequestID))
 	localAssert.Contains(lines[0], fmt.Sprintf(`"%s":"%s"`, string(customKey), customValue))
 
-	localAssert.Contains(lines[1], `"message":"Log with only trace ID warning"`)
+	localAssert.Contains(lines[1], `"M":"Log with only trace ID warning"`)
 	localAssert.Contains(lines[1], fmt.Sprintf(`"trace_id":"%s"`, testTraceID))
 	localAssert.NotContains(lines[1], `"request_id":`)
 	localAssert.NotContains(lines[1], fmt.Sprintf(`"%s":`, string(customKey)))
 
-	localAssert.Contains(lines[2], `"message":"Log with only custom key"`)
+	localAssert.Contains(lines[2], `"M":"Log with only custom key"`)
 	localAssert.NotContains(lines[2], `"trace_id":`)
 	localAssert.NotContains(lines[2], `"request_id":`)
 	localAssert.Contains(lines[2], fmt.Sprintf(`"%s":"%s"`, string(customKey), customValue))
 
-	localAssert.Contains(lines[3], `"message":"Log with no context values"`)
+	localAssert.Contains(lines[3], `"M":"Log with no context values"`)
 	localAssert.NotContains(lines[3], `"trace_id":`)
 	localAssert.NotContains(lines[3], `"request_id":`)
 	localAssert.NotContains(lines[3], fmt.Sprintf(`"%s":`, string(customKey)))
@@ -141,19 +141,118 @@ func TestGlobalCtxFunctions(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(content), "\n")
 	localRequire.Len(lines, 3, "Should have 3 log lines from global context functions")
 
-	localAssert.Contains(lines[0], `"message":"Global log with context via Ctx"`)
+	localAssert.Contains(lines[0], `"M":"Global log with context via Ctx"`)
 	localAssert.Contains(lines[0], fmt.Sprintf(`"trace_id":"%s"`, testTraceID))
 	localAssert.Contains(lines[0], fmt.Sprintf(`"request_id":"%s"`, testRequestID))
 	localAssert.Contains(lines[0], fmt.Sprintf(`"%s":"%s"`, string(globalCustomKey), customValue))
 
-	localAssert.Contains(lines[1], `"message":"Global log with trace ID via Ctxf: formatted"`)
+	localAssert.Contains(lines[1], `"M":"Global log with trace ID via Ctxf: formatted"`)
 	localAssert.Contains(lines[1], fmt.Sprintf(`"trace_id":"%s"`, testTraceID))
 	localAssert.NotContains(lines[1], `"request_id":`)
 	localAssert.NotContains(lines[1], fmt.Sprintf(`"%s":`, string(globalCustomKey)))
 
-	localAssert.Contains(lines[2], `"message":"Global log with custom key via Ctxw"`)
+	localAssert.Contains(lines[2], `"M":"Global log with custom key via Ctxw"`)
 	localAssert.Contains(lines[2], `"extra":"field"`)
 	localAssert.NotContains(lines[2], `"trace_id":`)
 	localAssert.NotContains(lines[2], `"request_id":`)
 	localAssert.Contains(lines[2], fmt.Sprintf(`"%s":"%s"`, string(globalCustomKey), customValue))
+}
+
+// TestGlobalCtxLevelFunctions tests global contextual logging functions for various levels.
+// (TestGlobalCtxLevelFunctions 测试不同级别的全局上下文日志记录函数。)
+func TestGlobalCtxLevelFunctions(t *testing.T) {
+	localRequire := require.New(t)
+	localAssert := assert.New(t)
+
+	tempDir := t.TempDir()
+	logFilePath := filepath.Join(tempDir, "test_global_ctx_levels.log")
+	opts := log.NewOptions()
+	opts.OutputPaths = []string{logFilePath}
+	opts.Format = log.FormatJSON
+	opts.Level = zapcore.DebugLevel.String() // Ensure all levels are logged
+	type globalCtxLevelKey string
+	const ctxKeyForLevels globalCtxLevelKey = "ctx_level_key"
+	opts.ContextKeys = []any{ctxKeyForLevels}
+
+	log.Init(opts)
+	defer func() {
+		// Restore global logger to a known default state
+		log.Init(log.NewOptions()) 
+		_ = log.Sync()
+	}()
+
+	testTraceID := "global-ctx-level-trace"
+	testRequestID := "global-ctx-level-req"
+	customLevelValue := "ctx-level-data"
+
+	ctx := context.Background()
+	ctx = log.ContextWithTraceID(ctx, testTraceID)
+	ctx = log.ContextWithRequestID(ctx, testRequestID)
+	ctx = context.WithValue(ctx, ctxKeyForLevels, customLevelValue)
+
+	// Test each level
+	log.CtxDebugf(ctx, "Global CtxDebugf message: %s", "debug_val")
+	log.CtxInfof(ctx, "Global CtxInfof message: %s", "info_val")
+	log.CtxWarnf(ctx, "Global CtxWarnf message: %s", "warn_val")
+	log.CtxErrorf(ctx, "Global CtxErrorf message: %s", "error_val")
+
+	// Test Panic and Fatal separately due to their nature
+	// We can't easily test os.Exit in Fatal, so we'll focus on Panic
+	// and trust Fatal calls the underlying logger's Fatal.
+
+	// Test CtxPanicf
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("log.CtxPanicf did not panic")
+			}
+		}()
+		log.CtxPanicf(ctx, "Global CtxPanicf message: %s", "panic_val")
+	}()
+
+	// After panic, the logger might be in an inconsistent state or synced. 
+	// It's good practice to re-initialize or ensure state if tests continue.
+	// For this test, we expect logs up to CtxErrorf and the Panic log to be written.
+	// Re-init for safety if further global log operations were planned *after* a panic test in a real scenario.
+	// However, since we defer log.Init(log.NewOptions()), this is handled at test end.
+	log.Init(opts) // Re-initialize with the same options to ensure the logger is active after panic for sync
+	// Ensure that the instance of logger used by `log.Std()` is the same as `originalStdLogger` or a new one created by `log.Init`
+	// This is to make sure the global logger `std` is not unexpectedly changed.
+	currentStdLogger := log.Std()
+	// Depending on internal Init behavior, it might be the same or a new instance.
+	// What matters is that it's functional and using `opts`.
+	localAssert.NotNil(currentStdLogger, "Global logger should be non-nil after re-init")
+
+
+	err := log.Sync() // Sync logs
+	localRequire.NoError(err, "Failed to sync logger for global context level functions")
+
+	contentBytes, err := os.ReadFile(logFilePath)
+	localRequire.NoError(err, "Failed to read log file for global context level functions")
+	content := string(contentBytes)
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+
+	// Expected number of lines: Debug, Info, Warn, Error, Panic = 5 lines
+	// Fatal is not easily testable here due to os.Exit
+	localRequire.Len(lines, 5, "Should have 5 log lines from global context level functions (excluding Fatal)")
+
+	expectedMessages := []string{
+		"Global CtxDebugf message: debug_val",
+		"Global CtxInfof message: info_val",
+		"Global CtxWarnf message: warn_val",
+		"Global CtxErrorf message: error_val",
+		"Global CtxPanicf message: panic_val",
+	}
+	expectedLevels := []string{"DEBUG", "INFO", "WARN", "ERROR", "PANIC"}
+
+	for i, line := range lines {
+		localAssert.Contains(line, fmt.Sprintf(`"M":"%s"`, expectedMessages[i]))
+		localAssert.Contains(line, fmt.Sprintf(`"L":"%s"`, expectedLevels[i]))
+		localAssert.Contains(line, fmt.Sprintf(`"trace_id":"%s"`, testTraceID))
+		localAssert.Contains(line, fmt.Sprintf(`"request_id":"%s"`, testRequestID))
+		localAssert.Contains(line, fmt.Sprintf(`"%s":"%s"`, string(ctxKeyForLevels), customLevelValue))
+		if expectedLevels[i] == "ERROR" || expectedLevels[i] == "PANIC" {
+			localAssert.Contains(line, `"stacktrace":`)
+		}
+	}
 } 
