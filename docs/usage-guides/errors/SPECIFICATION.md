@@ -1,4 +1,3 @@
-
 # lmcc-go-sdk Errors Module Specification
 
 **Version:** 1.0.0
@@ -113,7 +112,9 @@ This type associates a `Coder` with an underlying error and captures a stack tra
     - `coder Coder`: The `Coder` associated with this error.
     - `stack StackTrace`: The stack trace captured at the point of attaching the `Coder`.
 - **Key Methods**:
-    - `Error() string`: Returns a message including the `Coder`'s string and the `cause`'s error message (e.g., `coder.String() + ": " + cause.Error()`). If the `coder` or its string is empty, it returns `cause.Error()`.
+    - `Error() string`: Returns a message combining the `Coder`\'s string and the `cause`\'s error message.
+        - If `cause` is not `nil`: formats as `coder.String() + ": " + cause.Error()`. If the `coder` is `nil` or `coder.String()` is empty, it returns `cause.Error()`.
+        - If `cause` is `nil`: returns `coder.String()` if the `coder` is not `nil` and `coder.String()` is not empty. Otherwise, returns an empty string. (This case should ideally not happen if constructors are used correctly).
     - `Unwrap() error`: Returns `cause`.
     - `Coder() Coder`: Returns the associated `coder`.
     - `Format(s fmt.State, verb rune)`: Implements `fmt.Formatter`.
@@ -132,10 +133,15 @@ This type allows for collecting and managing a list of errors as a single error.
 - **Key Methods**:
     - `Add(err error)`: Adds a non-nil error to the group.
     - `Errors() []error`: Returns the slice of contained errors.
-    - `Error() string`: Returns a string representation combining the group message (if any) and all contained error messages.
+    - `Error() string`: Returns a string representation of the error group.
+        - If a group message is provided, it prefixes the message.
+        - If no group message is provided and the group contains errors, a default prefix ("an error occurred: " for one error, "multiple errors occurred: " for multiple errors) is used.
+        - It then lists all contained error messages, separated by "; ".
+        - If the group is empty and has a message, only the message is returned.
+        - If the group is empty and has no message, "no errors in group" is returned.
     - `Unwrap() []error`: Returns the slice of contained errors, making it compatible with Go 1.20+ multi-error unwrapping (e.g., for `errors.Is` and `errors.As`).
     - `Format(s fmt.State, verb rune)`: Implements `fmt.Formatter`.
-        - `%+v`: Prints the group message (if any) followed by a detailed, multi-line representation of each contained error, including their stack traces if available and formatted with `%+v`.
+        - `%+v`: Prints the group message (if any) followed by a detailed, multi-line representation of each contained error, including their stack traces if available and formatted with `%+v`. If the group is empty and has no message, it prints "empty error group". If the group is empty but has a message, it prints the group message followed by a newline.
 
 ## 4. Error Creation
 
@@ -278,12 +284,12 @@ All error types in this module (`fundamental`, `wrapper`, `withCode`, `ErrorGrou
     - For `fundamental`: Prints the error message.
     - For `wrapper`: Prints the combined message (`wrapper.msg: cause.Error()`).
     - For `withCode`: Prints the message including the `Coder`'s string (e.g., `coder.String(): cause.Error()`).
-    - For `ErrorGroup`: Prints the combined message of the group and all its contained errors.
+    - For `ErrorGroup`: Prints the combined message of the group and all its contained errors. (Behavior refined by previous ErrorGroup.Error() method update)
 - **`%+v`**:
     - For `fundamental`: Prints the error message followed by its stack trace.
     - For `wrapper`: Prints the combined message, followed by the stack trace captured *at the point this wrapping*.
     - For `withCode`: Prints the message (including `Coder` info), followed by the stack trace captured *at the point this `Coder` was attached*.
-    - For `ErrorGroup`: Prints the group's main message (if any), followed by a detailed, multi-line representation of each contained error. If a contained error also supports `%+v` (like those from this package), its full details including its own stack trace will be printed.
+    - For `ErrorGroup`: Prints the group's main message (if any), followed by a detailed, multi-line representation of each contained error. If a contained error also supports `%+v` (like those from this package), its full details including its own stack trace will be printed. If the group is empty and has no message, it prints "empty error group". If the group is empty but has a message, it prints the group message followed by a newline.
 
 ```go
 // To print an error with its full stack trace(s):
@@ -327,4 +333,4 @@ For runnable examples, please see `pkg/errors/example_test.go`.
 - **Error Wrapping**: The `Unwrap()` method on `wrapper`, `withCode`, and the `Unwrap() []error` on `ErrorGroup` ensure compatibility with `errors.Is` and `errors.As` in Go 1.13+ (for single error unwrapping) and Go 1.20+ (for multi-error unwrapping with `ErrorGroup`).
 - **Stack Traces**: Stack trace collection uses the `runtime` package.
 
-This specification aims to provide a comprehensive guide to using the `pkg/errors` module. For specific implementation details, refer to the source code. 
+This specification aims to provide a comprehensive guide to using the `pkg/errors` module. For specific implementation details, refer to the source code.

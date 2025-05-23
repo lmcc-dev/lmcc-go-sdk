@@ -1,4 +1,3 @@
-
 # lmcc-go-sdk Errors 模块规范
 
 **版本:** 1.0.0
@@ -113,7 +112,9 @@ type Frame uintptr
     - `coder Coder`: 与此错误关联的 `Coder`。
     - `stack StackTrace`: 附加 `Coder` 时捕获的堆栈跟踪。
 - **关键方法**:
-    - `Error() string`: 返回包含 `Coder` 字符串和 `cause` 错误消息的消息 (例如 `coder.String() + ": " + cause.Error()`)。如果 `coder` 或其字符串为空，则返回 `cause.Error()`。
+    - `Error() string`: 返回一个结合了 `Coder` 字符串和 `cause` 错误消息的消息。
+        - 如果 `cause` 不为 `nil`：格式为 `coder.String() + ": " + cause.Error()`。如果 `coder` 为 `nil` 或 `coder.String()` 为空，则返回 `cause.Error()`。
+        - 如果 `cause` 为 `nil`：如果 `coder` 不为 `nil` 且 `coder.String()` 不为空，则返回 `coder.String()`。否则返回空字符串。(理想情况下，如果构造函数使用正确，则不应发生此情况)。
     - `Unwrap() error`: 返回 `cause`。
     - `Coder() Coder`: 返回关联的 `coder`。
     - `Format(s fmt.State, verb rune)`: 实现 `fmt.Formatter` 接口。
@@ -132,10 +133,15 @@ type Frame uintptr
 - **关键方法**:
     - `Add(err error)`: 将非 `nil` 错误添加到组中。
     - `Errors() []error`: 返回包含的错误切片。
-    - `Error() string`: 返回一个字符串表示，结合了组消息 (如果有) 和所有包含的错误消息。
+    - `Error() string`: 返回错误组的字符串表示形式。
+        - 如果提供了组消息，它将作为消息的前缀。
+        - 如果没有提供组消息且组中包含错误，则使用默认前缀 ("发生了一个错误: " 对于单个错误, "发生了多个错误: " 对于多个错误)。
+        - 然后它列出所有包含的错误消息，以 "; " 分隔。
+        - 如果组为空但有消息，则仅返回该消息。
+        - 如果组为空且没有消息，则返回 "组内无错误"。
     - `Unwrap() []error`: 返回包含的错误切片，使其与 Go 1.20+ 的多错误解包兼容 (例如，用于 `errors.Is` 和 `errors.As`)。
     - `Format(s fmt.State, verb rune)`: 实现 `fmt.Formatter` 接口。
-        - `%+v`: 打印组消息 (如果有)，然后是每个所含错误的详细、多行表示，如果可用并且使用 `%+v` 格式化，则包括其堆栈跟踪。
+        - `%+v`: 打印组消息 (如果有)，然后是每个所含错误的详细、多行表示，如果可用并且使用 `%+v` 格式化，则包括其堆栈跟踪。如果组为空且没有消息，则打印 "空错误组"。如果组为空但有消息，则打印组消息后跟一个换行符。
 
 ## 4. 错误创建
 
@@ -278,12 +284,12 @@ if errors.IsCode(err, ErrPaymentFailed) { // 假设 ErrPaymentFailed 是一个 C
     - 对于 `fundamental`: 打印错误消息。
     - 对于 `wrapper`: 打印组合消息 (`wrapper.msg: cause.Error()`)。
     - 对于 `withCode`: 打印包含 `Coder` 字符串的消息 (例如 `coder.String(): cause.Error()`)。
-    - 对于 `ErrorGroup`: 打印组及其所有包含错误的组合消息。
+    - 对于 `ErrorGroup`: 打印组及其所有包含错误的组合消息。(行为已通过先前的 ErrorGroup.Error() 方法更新进行了优化)
 - **`%+v`**:
     - 对于 `fundamental`: 打印错误消息及其堆栈跟踪。
     - 对于 `wrapper`: 打印组合消息，然后是在 *此包装点* 捕获的堆栈跟踪。
     - 对于 `withCode`: 打印消息 (包括 `Coder` 信息)，然后是在 *附加此 `Coder` 的点* 捕获的堆栈跟踪。
-    - 对于 `ErrorGroup`: 打印组的主消息 (如果有)，然后是每个所含错误的详细、多行表示。如果包含的错误也支持 `%+v` (如此包中的错误)，则会打印其完整详细信息，包括其自己的堆栈跟踪。
+    - 对于 `ErrorGroup`: 打印组的主消息 (如果有)，然后是每个所含错误的详细、多行表示。如果包含的错误也支持 `%+v` (如此包中的错误)，则会打印其完整详细信息，包括其自己的堆栈跟踪。如果组为空且没有消息，则打印 "空错误组"。如果组为空但有消息，则打印组消息后跟一个换行符。
 
 ```go
 // 打印带有完整堆栈跟踪的错误:
@@ -327,4 +333,4 @@ fmt.Printf("%+v\n", err)
 - **错误包装**: `wrapper`、`withCode` 上的 `Unwrap()` 方法以及 `ErrorGroup` 上的 `Unwrap() []error` 方法确保了与 Go 1.13+ 中的 `errors.Is` 和 `errors.As` (用于单个错误解包) 以及 Go 1.20+ (用于 `ErrorGroup` 的多错误解包) 的兼容性。
 - **堆栈跟踪**: 堆栈跟踪收集使用 `runtime` 包。
 
-本规范旨在为使用 `pkg/errors` 模块提供全面的指南。有关具体的实现细节，请参阅源代码。 
+本规范旨在为使用 `pkg/errors` 模块提供全面的指南。有关具体的实现细节，请参阅源代码。
