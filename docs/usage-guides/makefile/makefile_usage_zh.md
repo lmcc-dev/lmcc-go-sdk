@@ -58,8 +58,23 @@
 -   **`make clean`**
     -   移除生成的构建产物，包括 `_output` 目录（包含构建工件、覆盖率报告）和下载的工具目录 (`_output/tools`)。
 
--   **`make tools`**
-    -   安装 `scripts/make-rules/tools.mk` 中列出的所有必需的开发工具（当前是 `golangci-lint` 和 `goimports`）。这对于初次设置开发环境很有用。
+-   **`make tools [GOLANGCI_LINT_STRATEGY=...]`**
+    -   安装 `scripts/make-rules/tools.mk` 中列出的所有必需的开发工具（当前是 `golangci-lint`、`goimports` 和 `godoc`）。这对于初次设置开发环境很有用。
+    -   **golangci-lint 版本策略**：
+        - `stable`（默认）：使用经过测试的稳定版本 v1.64.8，确保可重现构建
+        - `latest`：始终使用最新可用版本，获得前沿特性
+        - `auto`：根据 Go 版本自动选择（Go 1.24+ 使用最新版，较旧版本使用稳定版）
+    -   示例：
+        - `make tools`（使用稳定策略）
+        - `make tools GOLANGCI_LINT_STRATEGY=latest`
+        - `make tools GOLANGCI_LINT_STRATEGY=auto`
+        - `make tools GOLANGCI_LINT_VERSION=v1.65.0`（覆盖特定版本）
+
+-   **`make tools.version`**
+    -   显示所有已安装工具的版本和当前策略设置。
+
+-   **`make tools.help`**
+    -   显示工具管理策略的详细帮助和使用示例。
 
 ## 3. 自定义 (可选)
 

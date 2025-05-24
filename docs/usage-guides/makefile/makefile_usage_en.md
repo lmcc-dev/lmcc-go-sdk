@@ -58,8 +58,23 @@ You can run these commands from the root directory of the project.
 -   **`make clean`**
     -   Removes generated files, including the `_output` directory (which contains build artifacts, coverage reports) and the downloaded tools directory (`_output/tools`).
 
--   **`make tools`**
-    -   Installs all required development tools listed in `scripts/make-rules/tools.mk` (currently `golangci-lint` and `goimports`). This is useful for setting up the development environment initially.
+-   **`make tools [GOLANGCI_LINT_STRATEGY=...]`**
+    -   Installs all required development tools listed in `scripts/make-rules/tools.mk` (currently `golangci-lint`, `goimports`, and `godoc`). This is useful for setting up the development environment initially.
+    -   **golangci-lint Version Strategies**:
+        - `stable` (default): Uses tested stable version v1.64.8 for reproducible builds
+        - `latest`: Always uses the latest available version for cutting-edge features
+        - `auto`: Auto-selects based on Go version (Go 1.24+ uses latest, older versions use stable)
+    -   Examples:
+        - `make tools` (uses stable strategy)
+        - `make tools GOLANGCI_LINT_STRATEGY=latest`
+        - `make tools GOLANGCI_LINT_STRATEGY=auto`
+        - `make tools GOLANGCI_LINT_VERSION=v1.65.0` (override specific version)
+
+-   **`make tools.version`**
+    -   Shows versions of all installed tools and current strategy settings.
+
+-   **`make tools.help`**
+    -   Shows detailed help for tools management strategies and usage examples.
 
 ### `make doc-view PKG=./path/to/package`
 
