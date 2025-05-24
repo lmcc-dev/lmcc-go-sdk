@@ -41,7 +41,7 @@ func (f *fundamental) Error() string {
 
 // Unwrap returns nil for a fundamental error, as it does not wrap another error.
 // Unwrap 为 fundamental 错误返回 nil，因为它不包装另一个错误。
-func (f *fundamental) Unwrap() error { 
+func (f *fundamental) Unwrap() error {
 	return nil // Original behavior restored
 }
 
@@ -49,8 +49,9 @@ func (f *fundamental) Unwrap() error {
 // Format 为 fundamental 错误实现 fmt.Formatter 接口。
 //
 // Supported verbs:
-//   %s, %v: Print the error message. (打印错误消息。)
-//   %+v:    Print the error message followed by the stack trace. (打印错误消息和堆栈跟踪。)
+//
+//	%s, %v: Print the error message. (打印错误消息。)
+//	%+v:    Print the error message followed by the stack trace. (打印错误消息和堆栈跟踪。)
 func (f *fundamental) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
@@ -161,10 +162,11 @@ func (w *wrapper) Unwrap() error {
 // Format 为 wrapper 错误实现 fmt.Formatter 接口。
 //
 // Supported verbs:
-//   %s, %v: Print the wrapper's message and the underlying error's message. (打印包装器的消息和底层错误的消息。)
-//           Format: "wrapper.msg: cause.Error()"
-//   %+v:    Print the wrapper's message, the underlying error's message, and the wrapper's stack trace.
-//           (打印包装器的消息、底层错误的消息以及包装器的堆栈跟踪。)
+//
+//	%s, %v: Print the wrapper's message and the underlying error's message. (打印包装器的消息和底层错误的消息。)
+//	        Format: "wrapper.msg: cause.Error()"
+//	%+v:    Print the wrapper's message, the underlying error's message, and the wrapper's stack trace.
+//	        (打印包装器的消息、底层错误的消息以及包装器的堆栈跟踪。)
 func (w *wrapper) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
@@ -277,8 +279,8 @@ func (wc *withCode) Error() string {
 	// Handle nil coder or empty coder string
 	// If the coder is nil or its string representation is empty, just return the cause's error string.
 	// 如果 coder 为 nil，或者其字符串表示为空，则仅返回 cause 的错误字符串。
-	if wc.coder == nil || wc.coder.String() == "" { 
-	    return wc.cause.Error()
+	if wc.coder == nil || wc.coder.String() == "" {
+		return wc.cause.Error()
 	}
 	// Otherwise, include the coder string.
 	// 否则，包含 coder 字符串。
@@ -308,10 +310,6 @@ func (wc *withCode) Is(target error) bool {
 
 	// Attempt to compare by Coder first if the target has a Coder.
 	// 如果目标具有 Coder，则首先尝试按 Coder 进行比较。
-	type coderError interface {
-		Coder()
-		error // To ensure it's an error type
-	}
 	targetAsCoder, ok := target.(Coder) // Simpler: target is directly a Coder
 	if ok && wc.coder != nil {
 		return wc.coder.Code() == targetAsCoder.Code()
@@ -352,7 +350,7 @@ func (wc *withCode) As(target interface{}) bool {
 		*withCodeTarget = wc
 		return true
 	}
-	
+
 	// Delegate to the cause for other types
 	// 对于其他类型，委托给 cause
 	return errors.As(wc.cause, target)
@@ -362,10 +360,11 @@ func (wc *withCode) As(target interface{}) bool {
 // Format 为 withCode 错误实现 fmt.Formatter 接口。
 //
 // Supported verbs:
-//   %s, %v: Print the error message, including Coder string. (打印错误消息，包括 Coder 字符串。)
-//           Format: "coder.String(): cause.Error()" or "cause.Error()" if Coder or its string is empty.
-//   %+v:    Print the error message (as above) and the stack trace of where the code was attached.
-//           (打印错误消息（如上）以及附加代码处的堆栈跟踪。)
+//
+//	%s, %v: Print the error message, including Coder string. (打印错误消息，包括 Coder 字符串。)
+//	        Format: "coder.String(): cause.Error()" or "cause.Error()" if Coder or its string is empty.
+//	%+v:    Print the error message (as above) and the stack trace of where the code was attached.
+//	        (打印错误消息（如上）以及附加代码处的堆栈跟踪。)
 func (wc *withCode) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
@@ -397,7 +396,7 @@ func NewWithCode(coder Coder, text string) error {
 			msg: text,
 			// No separate stack for fundamental here, stack is for withCode
 			// fundamental 在这里没有单独的堆栈，堆栈用于 withCode
-		}, 
+		},
 		coder: coder,
 		stack: callers(skipFrames), // skip NewWithCode itself and runtime.Callers
 	}
@@ -415,7 +414,7 @@ func ErrorfWithCode(coder Coder, format string, args ...interface{}) error {
 		cause: &fundamental{
 			msg: fmt.Sprintf(format, args...),
 			// No separate stack for fundamental here, stack is for withCode
-		}, 
+		},
 		coder: coder,
 		stack: callers(skipFrames), // skip ErrorfWithCode itself and runtime.Callers
 	}
@@ -545,5 +544,6 @@ func WithMessage(err error, message string) error {
 func WithMessagef(err error, format string, args ...interface{}) error {
 	return Wrapf(err, format, args...)
 }
+
 // ... existing code ...
 // ... existing code ...

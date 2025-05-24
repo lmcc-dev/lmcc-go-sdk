@@ -24,14 +24,14 @@ type mockCoder struct {
 	Ref  string
 }
 
-func (m *mockCoder) Code() int            { return m.C }
-func (m *mockCoder) String() string       { return m.Ext }
-func (m *mockCoder) HTTPStatus() int      { return m.HTTP }
-func (m *mockCoder) Reference() string    { return m.Ref }
+func (m *mockCoder) Code() int         { return m.C }
+func (m *mockCoder) String() string    { return m.Ext }
+func (m *mockCoder) HTTPStatus() int   { return m.HTTP }
+func (m *mockCoder) Reference() string { return m.Ref }
 
 // Error implements the error interface for mockCoder.
 // Error 为 mockCoder 实现 error 接口。
-func (m *mockCoder) Error() string        { return m.Ext }
+func (m *mockCoder) Error() string { return m.Ext }
 
 var (
 	mc1 = &mockCoder{C: 1001, Ext: "Mock Coder 1001", HTTP: 500}
@@ -84,11 +84,11 @@ func TestNew(t *testing.T) {
 			// Detailed %+v formatting is in format_test.go.
 			formattedS := fmt.Sprintf("%s", err)
 			if formattedS != tt.wantMsg {
-			    t.Errorf("Output of fmt.Sprintf(\"%%s\", err) was %q, want %q", formattedS, tt.wantMsg)
+				t.Errorf("Output of fmt.Sprintf(\"%%s\", err) was %q, want %q", formattedS, tt.wantMsg)
 			}
 			formattedV := fmt.Sprintf("%v", err)
 			if formattedV != tt.wantMsg {
-			    t.Errorf("Output of fmt.Sprintf(\"%%v\", err) was %q, want %q", formattedV, tt.wantMsg)
+				t.Errorf("Output of fmt.Sprintf(\"%%v\", err) was %q, want %q", formattedV, tt.wantMsg)
 			}
 		})
 	}
@@ -96,25 +96,25 @@ func TestNew(t *testing.T) {
 
 func TestErrorf(t *testing.T) {
 	tests := []struct {
-		name     string
-		format   string
-		args     []interface{}
-		wantMsg  string
-		wantErr  bool 
+		name    string
+		format  string
+		args    []interface{}
+		wantMsg string
+		wantErr bool
 	}{
 		{
-			name:     "Simple formatted error",
-			format:   "error: %s with value %d",
-			args:     []interface{}{"something", 123},
-			wantMsg:  "error: something with value 123",
-			wantErr:  true,
+			name:    "Simple formatted error",
+			format:  "error: %s with value %d",
+			args:    []interface{}{"something", 123},
+			wantMsg: "error: something with value 123",
+			wantErr: true,
 		},
 		{
-			name:     "No arguments",
-			format:   "a plain error",
-			args:     []interface{}{},
-			wantMsg:  "a plain error",
-			wantErr:  true,
+			name:    "No arguments",
+			format:  "a plain error",
+			args:    []interface{}{},
+			wantMsg: "a plain error",
+			wantErr: true,
 		},
 	}
 
@@ -132,11 +132,11 @@ func TestErrorf(t *testing.T) {
 				// Detailed %+v formatting is in format_test.go.
 				formattedS := fmt.Sprintf("%s", err)
 				if formattedS != tt.wantMsg {
-				    t.Errorf("Output of fmt.Sprintf(\"%%s\", err) was %q, want %q", formattedS, tt.wantMsg)
+					t.Errorf("Output of fmt.Sprintf(\"%%s\", err) was %q, want %q", formattedS, tt.wantMsg)
 				}
 				formattedV := fmt.Sprintf("%v", err)
 				if formattedV != tt.wantMsg {
-				    t.Errorf("Output of fmt.Sprintf(\"%%v\", err) was %q, want %q", formattedV, tt.wantMsg)
+					t.Errorf("Output of fmt.Sprintf(\"%%v\", err) was %q, want %q", formattedV, tt.wantMsg)
 				}
 
 			} else {
@@ -156,8 +156,8 @@ func TestWrap(t *testing.T) {
 		name          string
 		errToWrap     error
 		wrapMsg       string
-		wantOutputMsg string 
-		wantCauseIs   error  
+		wantOutputMsg string
+		wantCauseIs   error
 	}{
 		{
 			name:          "Wrap standard error",
@@ -177,14 +177,14 @@ func TestWrap(t *testing.T) {
 			name:          "Wrap nil error",
 			errToWrap:     nil,
 			wrapMsg:       "this should not appear",
-			wantOutputMsg: "", 
+			wantOutputMsg: "",
 			wantCauseIs:   nil,
 		},
 		{
 			name:          "Wrap with empty message",
 			errToWrap:     originalErr,
 			wrapMsg:       "",
-			wantOutputMsg: ": original error", 
+			wantOutputMsg: ": original error",
 			wantCauseIs:   originalErr,
 		},
 	}
@@ -197,7 +197,7 @@ func TestWrap(t *testing.T) {
 				if wrappedErr != nil {
 					t.Errorf("Wrap(nil, msg) = %v, want nil", wrappedErr)
 				}
-				return 
+				return
 			}
 
 			if wrappedErr == nil {
@@ -387,29 +387,29 @@ func TestWithCode(t *testing.T) {
 
 func TestNewWithCode(t *testing.T) {
 	tests := []struct {
-		name            string
-		text            string
-		coder           lmccerrors.Coder
-		wantErrorMsg    string
-		wantCoderCode   int
-	// wantCoderString string // Redundant, checked by wantCoderCode and coder equality effectively
-		wantCauseMsg    string 
+		name          string
+		text          string
+		coder         lmccerrors.Coder
+		wantErrorMsg  string
+		wantCoderCode int
+		// wantCoderString string // Redundant, checked by wantCoderCode and coder equality effectively
+		wantCauseMsg string
 	}{
 		{
-			name:            "New error with Coder",
-			text:            "resource creation failed",
-			coder:           mc1,
-			wantErrorMsg:    "Mock Coder 1001: resource creation failed",
-			wantCoderCode:   1001,
-			wantCauseMsg:    "resource creation failed",
+			name:          "New error with Coder",
+			text:          "resource creation failed",
+			coder:         mc1,
+			wantErrorMsg:  "Mock Coder 1001: resource creation failed",
+			wantCoderCode: 1001,
+			wantCauseMsg:  "resource creation failed",
 		},
 		{
-			name:            "New error with nil Coder",
-			text:            "another issue",
-			coder:           nil, // Should use unknownCoder
-			wantErrorMsg:    "An internal server error occurred: another issue",
-			wantCoderCode:   -1,
-			wantCauseMsg:    "another issue",
+			name:          "New error with nil Coder",
+			text:          "another issue",
+			coder:         nil, // Should use unknownCoder
+			wantErrorMsg:  "An internal server error occurred: another issue",
+			wantCoderCode: -1,
+			wantCauseMsg:  "another issue",
 		},
 	}
 
@@ -426,7 +426,7 @@ func TestNewWithCode(t *testing.T) {
 
 			retrievedCoder := lmccerrors.GetCoder(err)
 			if retrievedCoder == nil {
-			    t.Fatalf("GetCoder(err) returned nil for NewWithCode error")
+				t.Fatalf("GetCoder(err) returned nil for NewWithCode error")
 			}
 			if retrievedCoder.Code() != tt.wantCoderCode {
 				t.Errorf("GetCoder().Code() = %d, want %d", retrievedCoder.Code(), tt.wantCoderCode)
@@ -447,22 +447,22 @@ func TestNewWithCode(t *testing.T) {
 
 func TestErrorfWithCode(t *testing.T) {
 	tests := []struct {
-		name            string
-		format          string
-		args            []interface{}
-		coder           lmccerrors.Coder
-		wantErrorMsg    string
-		wantCoderCode   int
-		wantCauseMsg    string
+		name          string
+		format        string
+		args          []interface{}
+		coder         lmccerrors.Coder
+		wantErrorMsg  string
+		wantCoderCode int
+		wantCauseMsg  string
 	}{
 		{
-			name:            "Errorf with Coder and formatting",
-			format:          "ID %d not found for user %s",
-			args:            []interface{}{123, "john.doe"},
-			coder:           mc2,
-			wantErrorMsg:    "Mock Coder 1002: ID 123 not found for user john.doe",
-			wantCoderCode:   1002,
-			wantCauseMsg:    "ID 123 not found for user john.doe",
+			name:          "Errorf with Coder and formatting",
+			format:        "ID %d not found for user %s",
+			args:          []interface{}{123, "john.doe"},
+			coder:         mc2,
+			wantErrorMsg:  "Mock Coder 1002: ID 123 not found for user john.doe",
+			wantCoderCode: 1002,
+			wantCauseMsg:  "ID 123 not found for user john.doe",
 		},
 	}
 
@@ -477,14 +477,14 @@ func TestErrorfWithCode(t *testing.T) {
 			}
 			retrievedCoder := lmccerrors.GetCoder(err)
 			if retrievedCoder == nil {
-			    t.Fatalf("GetCoder(err) returned nil for ErrorfWithCode error")
+				t.Fatalf("GetCoder(err) returned nil for ErrorfWithCode error")
 			}
 			if retrievedCoder.Code() != tt.wantCoderCode {
 				t.Errorf("GetCoder().Code() from ErrorfWithCode = %d, want %d", retrievedCoder.Code(), tt.wantCoderCode)
 			}
 			cause := errors.Unwrap(err)
 			if cause == nil {
-			    t.Fatalf("errors.Unwrap(err) returned nil for ErrorfWithCode error")
+				t.Fatalf("errors.Unwrap(err) returned nil for ErrorfWithCode error")
 			}
 			if cause.Error() != tt.wantCauseMsg {
 				t.Errorf("Unwrapped cause error = %q, want %q", cause.Error(), tt.wantCauseMsg)
@@ -497,4 +497,4 @@ func TestErrorfWithCode(t *testing.T) {
 // Further tests for WithMessage, WithMessagef,
 // Is, As (more complex cases), Cause will be added progressively.
 // 후속 테스트는 WithMessage, WithMessagef,
-// Is, As (더 복잡한 경우), Cause에 대해 점진적으로 추가됩니다. 
+// Is, As (더 복잡한 경우), Cause에 대해 점진적으로 추가됩니다.

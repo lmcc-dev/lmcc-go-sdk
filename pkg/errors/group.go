@@ -26,10 +26,12 @@ type ErrorGroup struct {
 // NewErrorGroup 创建一个新的 ErrorGroup。
 //
 // Parameters:
-//   message: An optional overarching message for the error group. (错误组的可选总体消息。)
+//
+//	message: An optional overarching message for the error group. (错误组的可选总体消息。)
 //
 // Returns:
-//   *ErrorGroup: A pointer to the newly created ErrorGroup. (指向新创建的 ErrorGroup 的指针。)
+//
+//	*ErrorGroup: A pointer to the newly created ErrorGroup. (指向新创建的 ErrorGroup 的指针。)
 func NewErrorGroup(message ...string) *ErrorGroup {
 	msg := ""
 	if len(message) > 0 {
@@ -46,7 +48,8 @@ func NewErrorGroup(message ...string) *ErrorGroup {
 // Add 将一个非 nil 错误添加到组中。Nil 错误将被忽略。
 //
 // Parameters:
-//   err: The error to add. (要添加的错误。)
+//
+//	err: The error to add. (要添加的错误。)
 func (eg *ErrorGroup) Add(err error) {
 	if err == nil {
 		return
@@ -58,7 +61,8 @@ func (eg *ErrorGroup) Add(err error) {
 // Errors 返回组中的错误列表。
 //
 // Returns:
-//   []error: A slice of errors. (错误切片。)
+//
+//	[]error: A slice of errors. (错误切片。)
 func (eg *ErrorGroup) Errors() []error {
 	// Return a copy to prevent external modification if eg.errs is not pointer-based.
 	// However, []error itself is a reference type.
@@ -71,7 +75,8 @@ func (eg *ErrorGroup) Errors() []error {
 // Error 实现了 error 接口。它返回错误组的字符串表示形式。
 //
 // Returns:
-//   string: A string describing all errors in the group. (描述组中所有错误的字符串。)
+//
+//	string: A string describing all errors in the group. (描述组中所有错误的字符串。)
 func (eg *ErrorGroup) Error() string {
 	if len(eg.errs) == 0 {
 		if eg.message != "" {
@@ -109,10 +114,11 @@ func (eg *ErrorGroup) Error() string {
 // 用于解包多个错误 (Go 1.20+ 的行为)。
 //
 // Returns:
-//   []error: The slice of errors contained within the group. (组中包含的错误切片。)
-//            Returns nil if the group contains no errors, to align with errors.Join behavior
-//            where Join(nil...) is nil.
-//            (如果组中没有错误，则返回 nil，以与 errors.Join 的行为保持一致，其中 Join(nil...) 为 nil。)
+//
+//	[]error: The slice of errors contained within the group. (组中包含的错误切片。)
+//	         Returns nil if the group contains no errors, to align with errors.Join behavior
+//	         where Join(nil...) is nil.
+//	         (如果组中没有错误，则返回 nil，以与 errors.Join 的行为保持一致，其中 Join(nil...) 为 nil。)
 func (eg *ErrorGroup) Unwrap() []error {
 	if len(eg.errs) == 0 {
 		return nil
@@ -146,11 +152,11 @@ func (eg *ErrorGroup) Format(s fmt.State, verb rune) {
 	case 'v':
 		if s.Flag('+') {
 			if eg.message != "" {
-				io.WriteString(s, eg.message)
-				io.WriteString(s, "\n") // Add a newline after the group message
+				_, _ = io.WriteString(s, eg.message)
+				_, _ = io.WriteString(s, "\n") // Add a newline after the group message
 			}
 			if len(eg.errs) == 0 && eg.message == "" { // Handle case where group is empty and has no message
-				io.WriteString(s, "empty error group") // (空错误组)
+				_, _ = io.WriteString(s, "empty error group") // (空错误组)
 				return
 			} else if len(eg.errs) == 0 && eg.message != "" { // Group has message but no errors
 				// The message was already printed if it exists.
@@ -161,7 +167,7 @@ func (eg *ErrorGroup) Format(s fmt.State, verb rune) {
 
 			for i, err := range eg.errs {
 				if i > 0 {
-					io.WriteString(s, "\n") // Add a separator line between errors
+					_, _ = io.WriteString(s, "\n") // Add a separator line between errors
 				}
 				// Use Fprintf to format each sub-error with its details using %+v
 				// This will recursively call Format on sub-errors if they implement fmt.Formatter
@@ -173,7 +179,7 @@ func (eg *ErrorGroup) Format(s fmt.State, verb rune) {
 		}
 		fallthrough // For '%v' without '+', fall through to '%s'
 	case 's':
-		io.WriteString(s, eg.Error())
+		_, _ = io.WriteString(s, eg.Error())
 	case 'q':
 		fmt.Fprintf(s, "%q", eg.Error())
 	}
@@ -183,4 +189,4 @@ func (eg *ErrorGroup) Format(s fmt.State, verb rune) {
 // The existing TODO for stack trace on the group itself can remain if that feature is still desired.
 // func (eg *ErrorGroup) Format(s fmt.State, verb rune) {
 // ... (此处是旧的注释掉的 Format 方法，将被新的实现替换)
-// } 
+// }

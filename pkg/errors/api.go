@@ -66,11 +66,20 @@ func IsCode(err error, c Coder) bool {
 				return true
 			}
 		}
-		
+
+		// Check for multi-error unwrapping (Go 1.20+ style, like ErrorGroup)
+		if multiUnwrapper, ok := err.(interface{ Unwrap() []error }); ok {
+			for _, subErr := range multiUnwrapper.Unwrap() {
+				if IsCode(subErr, c) {
+					return true
+				}
+			}
+		}
+
 		unwrappedError := errors.Unwrap(err) // Use standard library errors.Unwrap
 		if unwrappedError == nil {
 			return false
 		}
 		err = unwrappedError
 	}
-} 
+}

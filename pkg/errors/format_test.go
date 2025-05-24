@@ -41,18 +41,18 @@ func TestFundamental_Format(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		errorFunc   errorCreationFunc      // Function to create the error (New or Errorf)
-		formatOrMsg string                 // Message for New, format string for Errorf
-		args        []interface{}          // Args for Errorf, nil for New
-		wantMsg     string                 // Expected from err.Error(), %s, %v
-		wantInPlusV []string               // Substrings expected in %+v output
+		errorFunc   errorCreationFunc // Function to create the error (New or Errorf)
+		formatOrMsg string            // Message for New, format string for Errorf
+		args        []interface{}     // Args for Errorf, nil for New
+		wantMsg     string            // Expected from err.Error(), %s, %v
+		wantInPlusV []string          // Substrings expected in %+v output
 	}{
 		{
-			name:      "New_SimpleMessage_Format",
-			errorFunc: func(f string, a ...interface{}) error { return lmccerrors.New(f) },
+			name:        "New_SimpleMessage_Format",
+			errorFunc:   func(f string, a ...interface{}) error { return lmccerrors.New(f) },
 			formatOrMsg: "basic error for fundamental format testing via New",
 			args:        nil,
-			wantMsg:   "basic error for fundamental format testing via New",
+			wantMsg:     "basic error for fundamental format testing via New",
 			wantInPlusV: []string{
 				"basic error for fundamental format testing via New",
 				"TestFundamental_Format",
@@ -60,22 +60,22 @@ func TestFundamental_Format(t *testing.T) {
 			},
 		},
 		{
-			name:      "New_EmptyMessage_Format",
-			errorFunc: func(f string, a ...interface{}) error { return lmccerrors.New(f) },
+			name:        "New_EmptyMessage_Format",
+			errorFunc:   func(f string, a ...interface{}) error { return lmccerrors.New(f) },
 			formatOrMsg: "",
 			args:        nil,
-			wantMsg:   "",
+			wantMsg:     "",
 			wantInPlusV: []string{
 				"TestFundamental_Format",
 				"format_test.go",
 			},
 		},
 		{
-			name:      "Errorf_SimpleFormat_Format",
-			errorFunc: lmccerrors.Errorf, // Direct reference
+			name:        "Errorf_SimpleFormat_Format",
+			errorFunc:   lmccerrors.Errorf, // Direct reference
 			formatOrMsg: "error from Errorf: %s, value: %d",
 			args:        []interface{}{"test", 42},
-			wantMsg:   "error from Errorf: test, value: 42",
+			wantMsg:     "error from Errorf: test, value: 42",
 			wantInPlusV: []string{
 				"error from Errorf: test, value: 42",
 				"TestFundamental_Format", // Errorf also calls callers, stack should point here
@@ -83,11 +83,11 @@ func TestFundamental_Format(t *testing.T) {
 			},
 		},
 		{
-			name:      "Errorf_NoArgs_Format",
-			errorFunc: lmccerrors.Errorf,
+			name:        "Errorf_NoArgs_Format",
+			errorFunc:   lmccerrors.Errorf,
 			formatOrMsg: "plain error from Errorf",
 			args:        nil,
-			wantMsg:   "plain error from Errorf",
+			wantMsg:     "plain error from Errorf",
 			wantInPlusV: []string{
 				"plain error from Errorf",
 				"TestFundamental_Format",
@@ -117,7 +117,7 @@ func TestFundamental_Format(t *testing.T) {
 			}
 			// Ensure message is at the start of %+v before stack trace
 			if tt.wantMsg != "" && !strings.HasPrefix(formattedPlusV, tt.wantMsg) {
-			    t.Errorf("Output of fmt.Sprintf(\"%%+v\", err) should start with message %q, but got %q", tt.wantMsg, formattedPlusV)
+				t.Errorf("Output of fmt.Sprintf(\"%%+v\", err) should start with message %q, but got %q", tt.wantMsg, formattedPlusV)
 			}
 
 			// Test %s
@@ -299,14 +299,13 @@ func TestWrapper_Format(t *testing.T) {
 			if tt.checkFuncInV != "" && !strings.Contains(formattedPlusV, "format_test.go") { // Assuming stack is in this file
 				t.Errorf("Formatted error with '%%+v' should mention 'format_test.go' for the wrapper stack. Got: %q", formattedPlusV)
 			}
-			
+
 			// 3. Check for the cause error's message (if applicable, and if it's different or needs specific check)
 			// The full message (tt.wantErrorMsg) already includes the cause's message, but let's ensure it's there as part of the cause's formatting.
 			// This means the cause's own .Error() string, or how it's formatted when it's printed as part of the chain.
 			if tt.causeMsgInV != "" && !strings.Contains(formattedPlusV, tt.causeMsgInV) {
 				t.Errorf("Formatted error with '%%+v' should contain cause message %q. Got: %q", tt.causeMsgInV, formattedPlusV)
 			}
-
 
 			// 4. Check for the original error's stack trace if it was an lmccerror and had one
 			if tt.originalStack {
@@ -319,7 +318,7 @@ func TestWrapper_Format(t *testing.T) {
 				// or "custom original error from lmccerrors\ngithub.com/lmcc-dev/lmcc-go-sdk/pkg/errors.New\n" (if created via errors.New)
 				// For `customOriginalErr := lmccerrors.New(...)`, its stack points to lmccerrors.New.
 				// So we should look for that.
-				
+
 				// A simplified check: ensure the customOriginalErr message is followed by a newline (indicating stack starts)
 				// and then some indication of its own stack.
 				// This might need refinement based on actual output.
@@ -358,6 +357,7 @@ func TestWrapper_Format(t *testing.T) {
 						// The difficulty is distinguishing it clearly from the wrapper's stack if they are too similar.
 						// The test `TestFundamental_Format` checks `customOriginalErr`'s stack more directly.
 						// Here, we rely on `wrapper.Format` correctly invoking `cause.Format`.
+						t.Logf("Stack trace does not contain expected function names, but this may be due to compiler optimizations")
 					}
 				}
 			}
@@ -383,21 +383,21 @@ func TestWithCode_Format(t *testing.T) {
 
 	localMc1 := &localMockCoder{C: 2001, Ext: "Local Mock Coder 2001", HTTP: 500}
 	localMc2 := &localMockCoder{C: 2002, Ext: "Local Mock Coder 2002", HTTP: 404}
-	unknownCoder := lmccerrors.GetUnknownCoder() 
+	unknownCoder := lmccerrors.GetUnknownCoder()
 
 	tests := []struct {
-		name            string
-		errorFunc       func(coder lmccerrors.Coder, originalError error, format string, args ...interface{}) error 
-		originalError   error                
-		coder           lmccerrors.Coder
-		textOrFormat    string               
-		args            []interface{}        
-		wantErrorMsg    string               
-		wantInPlusV     []string             
-		causeWantInPlusV []string            
-		checkFuncInV    string               
-		causeCreationFuncInV string        
-		shouldBeNil     bool                 
+		name                 string
+		errorFunc            func(coder lmccerrors.Coder, originalError error, format string, args ...interface{}) error
+		originalError        error
+		coder                lmccerrors.Coder
+		textOrFormat         string
+		args                 []interface{}
+		wantErrorMsg         string
+		wantInPlusV          []string
+		causeWantInPlusV     []string
+		checkFuncInV         string
+		causeCreationFuncInV string
+		shouldBeNil          bool
 		// originalStack   bool                 // Temporarily removed for debugging
 	}{
 		// Cases for WithCode
@@ -409,7 +409,7 @@ func TestWithCode_Format(t *testing.T) {
 			wantErrorMsg:  "Local Mock Coder 2001: standard base error for WithCode",
 			wantInPlusV: []string{
 				"Local Mock Coder 2001: standard base error for WithCode",
-				"standard base error for WithCode", 
+				"standard base error for WithCode",
 			},
 			checkFuncInV: "TestWithCode_Format",
 		},
@@ -421,16 +421,16 @@ func TestWithCode_Format(t *testing.T) {
 			wantErrorMsg:  "Local Mock Coder 2002: lmcc base error for WithCode",
 			wantInPlusV: []string{
 				"Local Mock Coder 2002: lmcc base error for WithCode",
-				"lmcc base error for WithCode", 
+				"lmcc base error for WithCode",
 			},
-			checkFuncInV:  "TestWithCode_Format",
+			checkFuncInV: "TestWithCode_Format",
 			// originalStack: true, // Temporarily removed
 		},
 		{
 			name:          "WithCode_StdError_NilCoder",
 			errorFunc:     func(c lmccerrors.Coder, e error, _ string, _ ...interface{}) error { return lmccerrors.WithCode(e, c) },
 			originalError: baseStdErr,
-			coder:         nil, 
+			coder:         nil,
 			wantErrorMsg:  unknownCoder.String() + ": standard base error for WithCode",
 			wantInPlusV:   []string{unknownCoder.String() + ": standard base error for WithCode"},
 			checkFuncInV:  "TestWithCode_Format",
@@ -444,35 +444,41 @@ func TestWithCode_Format(t *testing.T) {
 		},
 		// Cases for NewWithCode
 		{
-			name:         "NewWithCode_ValidCoder",
-			errorFunc:    func(c lmccerrors.Coder, _ error, text string, _ ...interface{}) error { return lmccerrors.NewWithCode(c, text) },
+			name: "NewWithCode_ValidCoder",
+			errorFunc: func(c lmccerrors.Coder, _ error, text string, _ ...interface{}) error {
+				return lmccerrors.NewWithCode(c, text)
+			},
 			coder:        localMc1,
 			textOrFormat: "new error with coder via NewWithCode",
 			wantErrorMsg: "Local Mock Coder 2001: new error with coder via NewWithCode",
 			wantInPlusV: []string{
 				"Local Mock Coder 2001: new error with coder via NewWithCode",
 			},
-			causeWantInPlusV: []string {
-				"new error with coder via NewWithCode", 
+			causeWantInPlusV: []string{
+				"new error with coder via NewWithCode",
 			},
-			checkFuncInV: "TestWithCode_Format",
-			causeCreationFuncInV: "lmccerrors.NewWithCode", 
+			checkFuncInV:         "TestWithCode_Format",
+			causeCreationFuncInV: "lmccerrors.NewWithCode",
 		},
 		{
-			name:         "NewWithCode_NilCoder",
-			errorFunc:    func(c lmccerrors.Coder, _ error, text string, _ ...interface{}) error { return lmccerrors.NewWithCode(c, text) },
-			coder:        nil, 
-			textOrFormat: "new error with nil coder",
-			wantErrorMsg: unknownCoder.String() + ": new error with nil coder",
-			wantInPlusV:  []string{unknownCoder.String() + ": new error with nil coder"},
-			causeWantInPlusV: []string{"new error with nil coder"},
-			checkFuncInV: "TestWithCode_Format",
+			name: "NewWithCode_NilCoder",
+			errorFunc: func(c lmccerrors.Coder, _ error, text string, _ ...interface{}) error {
+				return lmccerrors.NewWithCode(c, text)
+			},
+			coder:                nil,
+			textOrFormat:         "new error with nil coder",
+			wantErrorMsg:         unknownCoder.String() + ": new error with nil coder",
+			wantInPlusV:          []string{unknownCoder.String() + ": new error with nil coder"},
+			causeWantInPlusV:     []string{"new error with nil coder"},
+			checkFuncInV:         "TestWithCode_Format",
 			causeCreationFuncInV: "lmccerrors.NewWithCode",
 		},
 		// Cases for ErrorfWithCode
 		{
-			name:         "ErrorfWithCode_ValidCoder_Formatted",
-			errorFunc:    func(c lmccerrors.Coder, _ error, format string, a ...interface{}) error { return lmccerrors.ErrorfWithCode(c, format, a...) },
+			name: "ErrorfWithCode_ValidCoder_Formatted",
+			errorFunc: func(c lmccerrors.Coder, _ error, format string, a ...interface{}) error {
+				return lmccerrors.ErrorfWithCode(c, format, a...)
+			},
 			coder:        localMc2,
 			textOrFormat: "formatted error code %d, detail %s",
 			args:         []interface{}{77, "critical issue"},
@@ -480,9 +486,9 @@ func TestWithCode_Format(t *testing.T) {
 			wantInPlusV: []string{
 				"Local Mock Coder 2002: formatted error code 77, detail critical issue",
 			},
-			causeWantInPlusV: []string{"formatted error code 77, detail critical issue"},
-			checkFuncInV: "TestWithCode_Format",
-			causeCreationFuncInV: "lmccerrors.ErrorfWithCode", 
+			causeWantInPlusV:     []string{"formatted error code 77, detail critical issue"},
+			checkFuncInV:         "TestWithCode_Format",
+			causeCreationFuncInV: "lmccerrors.ErrorfWithCode",
 		},
 	}
 
@@ -494,7 +500,7 @@ func TestWithCode_Format(t *testing.T) {
 				if err != nil {
 					t.Errorf("Expected nil error, but got: %v", err)
 				}
-				return 
+				return
 			}
 
 			if err == nil {
@@ -525,7 +531,7 @@ func TestWithCode_Format(t *testing.T) {
 			}
 			// Ensure the full message is at the start
 			if !strings.HasPrefix(formattedPlusV, tt.wantErrorMsg) {
-			    t.Errorf("Formatted error with '%%+v' should start with message %q. Got: %q", tt.wantErrorMsg, formattedPlusV)
+				t.Errorf("Formatted error with '%%+v' should start with message %q. Got: %q", tt.wantErrorMsg, formattedPlusV)
 			}
 
 			// 2. Check for the stack trace of the WithCode/NewWithCode/ErrorfWithCode call itself
@@ -540,9 +546,9 @@ func TestWithCode_Format(t *testing.T) {
 
 			// 3. For WithCode, check if original error's stack (if lmccerror) is present - Temporarily REMOVED
 			/*
-			if tt.originalError != nil && tt.originalStack { // tt.originalStack is now commented out in struct
-				// Logic for checking original stack was here
-			}
+				if tt.originalError != nil && tt.originalStack { // tt.originalStack is now commented out in struct
+					// Logic for checking original stack was here
+				}
 			*/
 
 			// 4. For NewWithCode/ErrorfWithCode, check the formatting of the *cause*
@@ -559,15 +565,15 @@ func TestWithCode_Format(t *testing.T) {
 				}
 				// Check that the cause's stack trace points to its creation within our library code
 				/*
-				if tt.causeCreationFuncInV != "" {
-					// Check if the specific creation function (e.g., lmccerrors.NewWithCode) or a general internal creator is in the stack.
-					// The general internal creator for fundamental errors is newFundamental, which calls lmccerrors.New or lmccerrors.Errorf.
-					// The %+v output might show the exported function (NewWithCode) or deeper internal calls like New/Errorf or newFundamental itself.
-					// Let's be a bit more flexible: check for the expected exported function OR the file where fundamental errors are made (errors.go)
-					if !strings.Contains(formattedCausePlusV, tt.causeCreationFuncInV) && !strings.Contains(formattedCausePlusV, "errors.go") {
-						t.Errorf("Formatted cause with '%%+v' for test %s should contain stack from %q or involve 'errors.go'. Got: %q", tt.name, tt.causeCreationFuncInV, formattedCausePlusV)
+					if tt.causeCreationFuncInV != "" {
+						// Check if the specific creation function (e.g., lmccerrors.NewWithCode) or a general internal creator is in the stack.
+						// The general internal creator for fundamental errors is newFundamental, which calls lmccerrors.New or lmccerrors.Errorf.
+						// The %+v output might show the exported function (NewWithCode) or deeper internal calls like New/Errorf or newFundamental itself.
+						// Let's be a bit more flexible: check for the expected exported function OR the file where fundamental errors are made (errors.go)
+						if !strings.Contains(formattedCausePlusV, tt.causeCreationFuncInV) && !strings.Contains(formattedCausePlusV, "errors.go") {
+							t.Errorf("Formatted cause with '%%+v' for test %s should contain stack from %q or involve 'errors.go'. Got: %q", tt.name, tt.causeCreationFuncInV, formattedCausePlusV)
+						}
 					}
-				}
 				*/
 			}
 		})
@@ -614,8 +620,8 @@ func TestStackTrace_Format(t *testing.T) {
 		functionsInStack := []string{
 			"aTestFunctionForStackTrace_format_test", // original error creation
 			"anotherTestFunction_format_test",        // wrapper
-			"TestStackTrace_Format",         // Check that the main test function name is part of the deeper stack frames
-			"testing.tRunner",       // The test runner itself should be in the stack
+			"TestStackTrace_Format",                  // Check that the main test function name is part of the deeper stack frames
+			"testing.tRunner",                        // The test runner itself should be in the stack
 		}
 		for _, funcName := range functionsInStack {
 			if !strings.Contains(formattedError, funcName) {
@@ -631,7 +637,7 @@ func TestStackTrace_Format(t *testing.T) {
 		// Test %v and %s (should not print stack by default for wrapped errors)
 		simpleFormatV := fmt.Sprintf("%v", err)
 		if simpleFormatV != expectedMsgChain {
-		    t.Errorf("Formatted error with %%v should be %q, got: %q", expectedMsgChain, simpleFormatV)
+			t.Errorf("Formatted error with %%v should be %q, got: %q", expectedMsgChain, simpleFormatV)
 		}
 		// Check that no stack trace appears for %v
 		if strings.Count(simpleFormatV, "\n") > 0 && strings.Contains(simpleFormatV, "format_test.go:") {
@@ -640,7 +646,7 @@ func TestStackTrace_Format(t *testing.T) {
 
 		simpleFormatS := fmt.Sprintf("%s", err)
 		if simpleFormatS != expectedMsgChain {
-		    t.Errorf("Formatted error with %%s should be %q, got: %q", expectedMsgChain, simpleFormatS)
+			t.Errorf("Formatted error with %%s should be %q, got: %q", expectedMsgChain, simpleFormatS)
 		}
 		// Check that no stack trace appears for %s
 		if strings.Count(simpleFormatS, "\n") > 0 && strings.Contains(simpleFormatS, "format_test.go:") {
@@ -652,7 +658,7 @@ func TestStackTrace_Format(t *testing.T) {
 		// Test formatting of a fundamental error (which has a stack) directly.
 		// This is somewhat covered by TestFundamental_Format, but this focuses on StackTrace specific aspects if any.
 		fundamentalErr := lmccerrors.New("direct fundamental error for stack format")
-		
+
 		formattedFundamental := fmt.Sprintf("%+v", fundamentalErr)
 		t.Logf("Formatted fundamental error with stack (TestStackTrace_Format):\n%s", formattedFundamental)
 
@@ -661,7 +667,7 @@ func TestStackTrace_Format(t *testing.T) {
 			t.Errorf("Formatted fundamental error with '%%+v' should start with message %q. Got: %q", expectedFundamentalMsg, formattedFundamental)
 		}
 		// Check that the current test function (or its t.Run sub-function) is in the stack
-		if !strings.Contains(formattedFundamental, "TestStackTrace_Format") { 
+		if !strings.Contains(formattedFundamental, "TestStackTrace_Format") {
 			t.Errorf("Formatted fundamental error with '%%+v' should contain stack trace for current test func 'TestStackTrace_Format'. Got: %q", formattedFundamental)
 		}
 		if !strings.Contains(formattedFundamental, "format_test.go:") {
@@ -670,10 +676,10 @@ func TestStackTrace_Format(t *testing.T) {
 
 		// %s and %v for fundamental error
 		if fmt.Sprintf("%s", fundamentalErr) != expectedFundamentalMsg {
-		    t.Errorf("Fundamental error with %%s was %q, want %q", fmt.Sprintf("%s", fundamentalErr), expectedFundamentalMsg)
+			t.Errorf("Fundamental error with %%s was %q, want %q", fmt.Sprintf("%s", fundamentalErr), expectedFundamentalMsg)
 		}
 		if fmt.Sprintf("%v", fundamentalErr) != expectedFundamentalMsg {
-		    t.Errorf("Fundamental error with %%v was %q, want %q", fmt.Sprintf("%v", fundamentalErr), expectedFundamentalMsg)
+			t.Errorf("Fundamental error with %%v was %q, want %q", fmt.Sprintf("%v", fundamentalErr), expectedFundamentalMsg)
 		}
 	})
-} 
+}

@@ -17,7 +17,7 @@ func getTestStack(skip int) StackTrace {
 	// skip: number of additional frames to skip besides getTestStack, callers, and runtime.Callers
 	// We want the final skip for runtime.Callers to be 3 + skip
 	// 3 to skip runtime.Callers, errors.callers, and errors.getTestStack
-	return callers(skip + 3) 
+	return callers(skip + 3)
 }
 
 func TestCallers(t *testing.T) {
@@ -28,8 +28,8 @@ func TestCallers(t *testing.T) {
 
 	stack := getTestStack(0) // We want the caller of getTestStack, which is TestCallers
 
-	if stack == nil || len(stack) == 0 {
-		t.Fatal("callers() returned nil or empty stack")
+	if len(stack) == 0 {
+		t.Fatal("callers() returned empty stack")
 	}
 
 	// Check the first frame (most recent call site within our package, excluding callers itself)
@@ -63,7 +63,7 @@ func TestCallers(t *testing.T) {
 			if len(stackInner) < 3 { // Should have at least runtime.Callers, errors.callers, and this func
 				t.Fatalf("callers(0) from inner func returned too few frames: %d, expected at least 3", len(stackInner))
 			}
-			
+
 			// Frame 0: runtime.Callers
 			// Frame 1: errors.callers
 			// Frame 2: This anonymous function
@@ -72,15 +72,15 @@ func TestCallers(t *testing.T) {
 				t.Errorf("callers(0) second frame (index 1) name expected to be errors.callers, got %s", frame1.name())
 			}
 			if !strings.HasSuffix(frame1.file(), "stack.go") {
-			    t.Errorf("callers(0) second frame (index 1) file name unexpected: got %s, want suffix stack.go", frame1.file())
+				t.Errorf("callers(0) second frame (index 1) file name unexpected: got %s, want suffix stack.go", frame1.file())
 			}
 
-			frame2 := stackInner[2] // This anonymous function
+			frame2 := stackInner[2]                                   // This anonymous function
 			if !strings.Contains(frame2.name(), "TestCallers.func") { // Go naming for closures
 				t.Errorf("callers(0) third frame (index 2) name expected to contain TestCallers.func, got %s", frame2.name())
 			}
 			if !strings.HasSuffix(frame2.file(), "stack_test.go") {
-			    t.Errorf("callers(0) third frame (index 2) file name unexpected: got %s, want suffix stack_test.go", frame2.file())
+				t.Errorf("callers(0) third frame (index 2) file name unexpected: got %s, want suffix stack_test.go", frame2.file())
 			}
 		}()
 	}()
@@ -113,7 +113,7 @@ func TestFrameMethods(t *testing.T) {
 	}
 	// The name will be something like ...pkg/errors_test.TestFrameMethods.func1
 	// Note: Since this test file is `package errors`, the path will be `pkg/errors.TestFrameMethods.func...`
-	if !strings.Contains(name, "TestFrameMethods") { 
+	if !strings.Contains(name, "TestFrameMethods") {
 		t.Errorf("Frame.name() = %s, want to contain TestFrameMethods", name)
 	}
 
@@ -131,4 +131,4 @@ func TestFrameMethods(t *testing.T) {
 }
 
 // TestStackTraceFormat and its helpers (aTestFunctionForStackTrace, anotherTestFunction)
-// have been migrated to format_test.go as TestStackTrace_Format. 
+// have been migrated to format_test.go as TestStackTrace_Format.

@@ -108,11 +108,14 @@ func callers(skip int) StackTrace {
 // 要打印堆栈跟踪，请在打印错误时使用格式说明符 `%+v`。
 //
 // The output for each frame of the stack trace will be:
-//   <function_name>
-// 	<file>:<line>
+//
+//	  <function_name>
+//		<file>:<line>
+//
 // (堆栈跟踪的每个帧的输出将是：
-//   <函数名>
-// 	<文件>:<行号>)
+//
+//	  <函数名>
+//		<文件>:<行号>)
 func (st StackTrace) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
@@ -130,4 +133,4 @@ func (st StackTrace) Format(s fmt.State, verb rune) {
 			}
 		}
 	}
-} 
+}

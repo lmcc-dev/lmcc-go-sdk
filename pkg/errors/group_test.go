@@ -30,7 +30,9 @@ type MyCustomErrorType struct {
 
 // Error implements the error interface for MyCustomErrorType.
 // Error 为 MyCustomErrorType 实现错误接口。
-func (mce *MyCustomErrorType) Error() string { return fmt.Sprintf("MyCustomErrorType: %s: %d", mce.Msg, mce.Val) }
+func (mce *MyCustomErrorType) Error() string {
+	return fmt.Sprintf("MyCustomErrorType: %s: %d", mce.Msg, mce.Val)
+}
 
 // NonExistentErrorType is a custom error type for As_Compatibility test, used to test 'As' for a type not in the group.
 // NonExistentErrorType 是用于 As_Compatibility 测试的自定义错误类型，用于测试 'As' 获取组中不存在的类型。
@@ -53,7 +55,7 @@ func TestNewErrorGroup(t *testing.T) {
 		}
 		// Default message when empty and Error() is called
 		if eg.Error() != "no errors in group" {
-		    t.Errorf("Expected default empty message, got %q", eg.Error())
+			t.Errorf("Expected default empty message, got %q", eg.Error())
 		}
 	})
 
@@ -68,7 +70,7 @@ func TestNewErrorGroup(t *testing.T) {
 		}
 		// Message should be returned by Error() if no sub-errors
 		if eg.Error() != msg {
-		    t.Errorf("Expected group message %q when empty, got %q", msg, eg.Error())
+			t.Errorf("Expected group message %q when empty, got %q", msg, eg.Error())
 		}
 	})
 }
@@ -112,51 +114,51 @@ func TestErrorGroup_Error(t *testing.T) {
 	lmccErr1 := lmccerrors.NewWithCode(lmccerrors.ErrInternalServer, "internal service unavailable")
 
 	tests := []struct {
-		name        string
-		groupMsg    string
-		errsToAdd   []error
+		name            string
+		groupMsg        string
+		errsToAdd       []error
 		wantErrorString string
 	}{
 		{
-			name:        "NoErrors_NoGroupMessage",
-			groupMsg:    "",
-			errsToAdd:   []error{},
+			name:            "NoErrors_NoGroupMessage",
+			groupMsg:        "",
+			errsToAdd:       []error{},
 			wantErrorString: "no errors in group",
 		},
 		{
-			name:        "NoErrors_WithGroupMessage",
-			groupMsg:    "Process A failed",
-			errsToAdd:   []error{},
+			name:            "NoErrors_WithGroupMessage",
+			groupMsg:        "Process A failed",
+			errsToAdd:       []error{},
 			wantErrorString: "Process A failed",
 		},
 		{
-			name:        "OneError_NoGroupMessage",
-			groupMsg:    "",
-			errsToAdd:   []error{err1},
+			name:            "OneError_NoGroupMessage",
+			groupMsg:        "",
+			errsToAdd:       []error{err1},
 			wantErrorString: "an error occurred: DB connection failed",
 		},
 		{
-			name:        "OneError_WithGroupMessage",
-			groupMsg:    "Request handling error",
-			errsToAdd:   []error{err1},
+			name:            "OneError_WithGroupMessage",
+			groupMsg:        "Request handling error",
+			errsToAdd:       []error{err1},
 			wantErrorString: "Request handling error: DB connection failed",
 		},
 		{
-			name:        "MultipleErrors_NoGroupMessage",
-			groupMsg:    "",
-			errsToAdd:   []error{err1, err2},
+			name:            "MultipleErrors_NoGroupMessage",
+			groupMsg:        "",
+			errsToAdd:       []error{err1, err2},
 			wantErrorString: "multiple errors occurred: DB connection failed; validation rule broken", // Corrected: err2.Error()
 		},
 		{
-			name:        "MultipleErrors_WithGroupMessage",
-			groupMsg:    "Task failed with errors",
-			errsToAdd:   []error{err1, err2},
+			name:            "MultipleErrors_WithGroupMessage",
+			groupMsg:        "Task failed with errors",
+			errsToAdd:       []error{err1, err2},
 			wantErrorString: "Task failed with errors: DB connection failed; validation rule broken",
 		},
 		{
-			name:        "MixOfStdAndLmccErrors_WithGroupMessage",
-			groupMsg:    "Operation summary",
-			errsToAdd:   []error{err1, lmccErr1, err2},
+			name:            "MixOfStdAndLmccErrors_WithGroupMessage",
+			groupMsg:        "Operation summary",
+			errsToAdd:       []error{err1, lmccErr1, err2},
 			wantErrorString: "Operation summary: DB connection failed; Internal server error: internal service unavailable; validation rule broken",
 		},
 	}
@@ -186,7 +188,7 @@ func TestErrorGroup_Error(t *testing.T) {
 		eg.Add(err2)
 		want := "multiple errors occurred: DB connection failed; validation rule broken"
 		if eg.Error() != want {
-		    t.Errorf("ErrorGroup.Error() = %q, want %q", eg.Error(), want)
+			t.Errorf("ErrorGroup.Error() = %q, want %q", eg.Error(), want)
 		}
 	})
 }
@@ -318,61 +320,42 @@ func (e *mockErrorWithFormatter) Format(s fmt.State, verb rune) {
 func TestErrorGroup_Format(t *testing.T) {
 	// Test setup
 	// (测试设置)
-	_ = lmccerrors.New("temporary test call") // Temporary call for diagnostics
+	_ = lmccerrors.New("temporary test call")  // Temporary call for diagnostics
 	err1 := lmccerrors.New("original error 1") // This will be a *fundamental
 	err2 := &mockError{msg: "mock error 2"}
 	err3WithCode := lmccerrors.NewWithCode(lmccerrors.ErrOperationFailed, "error with code 3") // This will be a *withCode
 	err4Formatted := &mockErrorWithFormatter{msg: "formatted error 4", detailMsg: "details for formatted error 4"}
 
-	// Capture stack trace for err3WithCode to compare later
-	// (捕获 err3WithCode 的堆栈跟踪以供后续比较)
 	// Note: The actual stack trace will vary based on test execution, so we'll check for its presence
 	// and the beginning of the format.
 	// (注意：实际的堆栈跟踪会因测试执行而异，因此我们将检查其是否存在以及格式的开头。)
-	var err3Stack string
-	if fe, ok := err3WithCode.(fmt.Formatter); ok {
-		err3Stack = fmt.Sprintf("%+v", fe)
-		// We only need the part after the message for comparison, as the message is part of the "Error X of Y" line.
-		// (我们只需要消息之后的部分进行比较，因为消息是 "Error X of Y" 行的一部分。)
-		parts := strings.SplitN(err3Stack, "\n", 2) // Split by literal \n as stack trace contains it
-		if len(parts) > 1 {
-				// The message itself part of `err3WithCode.Error()` will be `ErrOperationFailed.String(): error with code 3`
-				// The `fmt.Fprintf(s, "Error %d of %d: %+v", i+1, len(eg.errs), err)` in `ErrorGroup.Format`
-				// will print this message. Then `err3WithCode.Format` will print its own message again, followed by stack.
-				// So we need to find the beginning of the stack trace.
-				// Let's look for the first line of the stack.
-				err3Stack = parts[1] // Get the part with the stack
-		} else {
-			err3Stack = "stack trace expected but not fully captured for comparison"
-		}
-	}
-
+	_ = err3WithCode // Acknowledge that we have this error for potential future use
 
 	tests := []struct {
-		name          string        // Test case name (测试用例名称)
-		group         *lmccerrors.ErrorGroup   // The error group to test (要测试的错误组)
-		format        string        // The format string (格式字符串)
-		expectedParts []string      // Expected parts of the output string (预期输出字符串的部分内容)
-		exactMatch    bool          // Whether to do an exact match or Contains check (是否进行精确匹配或包含检查)
-		debugOutput   bool          // Flag to print output for debugging (打印输出以进行调试的标志)
+		name          string                 // Test case name (测试用例名称)
+		group         *lmccerrors.ErrorGroup // The error group to test (要测试的错误组)
+		format        string                 // The format string (格式字符串)
+		expectedParts []string               // Expected parts of the output string (预期输出字符串的部分内容)
+		exactMatch    bool                   // Whether to do an exact match or Contains check (是否进行精确匹配或包含检查)
+		debugOutput   bool                   // Flag to print output for debugging (打印输出以进行调试的标志)
 	}{
 		{
-			name:   "empty group with %+v",
-			group:  lmccerrors.NewErrorGroup(""),
-			format: "%+v",
+			name:          "empty group with %+v",
+			group:         lmccerrors.NewErrorGroup(""),
+			format:        "%+v",
 			expectedParts: []string{"empty error group"},
-			exactMatch: true,
+			exactMatch:    true,
 		},
 		{
-			name:   "empty group with message with %+v",
-			group:  lmccerrors.NewErrorGroup("Group with no errors"),
-			format: "%+v",
+			name:          "empty group with message with %+v",
+			group:         lmccerrors.NewErrorGroup("Group with no errors"),
+			format:        "%+v",
 			expectedParts: []string{"Group with no errors\n"}, // Newline added after group message
-			exactMatch: true,
+			exactMatch:    true,
 		},
 		{
-			name:   "single error with %+v, no group message",
-			group:  func() *lmccerrors.ErrorGroup {
+			name: "single error with %+v, no group message",
+			group: func() *lmccerrors.ErrorGroup {
 				eg := lmccerrors.NewErrorGroup("")
 				eg.Add(err1)
 				return eg
@@ -387,8 +370,8 @@ func TestErrorGroup_Format(t *testing.T) {
 			debugOutput: true, // Enable debug output for this specific sub-test
 		},
 		{
-			name:   "single error with %+v, with group message",
-			group:  func() *lmccerrors.ErrorGroup {
+			name: "single error with %+v, with group message",
+			group: func() *lmccerrors.ErrorGroup {
 				eg := lmccerrors.NewErrorGroup("Group A")
 				eg.Add(err2)
 				return eg
@@ -403,9 +386,9 @@ func TestErrorGroup_Format(t *testing.T) {
 			name: "multiple errors with %+v, with group message",
 			group: func() *lmccerrors.ErrorGroup {
 				eg := lmccerrors.NewErrorGroup("Group B")
-				eg.Add(err1) // fundamental
-				eg.Add(err2) // mockError
-				eg.Add(err3WithCode) // withCode (includes stack)
+				eg.Add(err1)          // fundamental
+				eg.Add(err2)          // mockError
+				eg.Add(err3WithCode)  // withCode (includes stack)
 				eg.Add(err4Formatted) // mockErrorWithFormatter
 				return eg
 			}(),
@@ -414,66 +397,66 @@ func TestErrorGroup_Format(t *testing.T) {
 				"Group B\n",
 				"Error 1 of 4: original error 1", // err1 is *fundamental, so its %+v includes stack
 				"github.com/lmcc-dev/lmcc-go-sdk/pkg/errors.New", // Stack from err1 starts at New
-				"\nError 2 of 4: mock error 2", // err2 is mockError
+				"\nError 2 of 4: mock error 2",                   // err2 is mockError
 				fmt.Sprintf("\nError 3 of 4: %s: %s", lmccerrors.ErrOperationFailed.String(), "error with code 3"), // Corrected: single backslash for newline
-				"github.com/lmcc-dev/lmcc-go-sdk/pkg/errors.NewWithCode", // Stack from err3WithCode (wc.stack) starts at NewWithCode
-				"\nError 4 of 4: formatted error 4 - details for formatted error 4 (detailed)", // Corrected: single backslash for newline
+				"github.com/lmcc-dev/lmcc-go-sdk/pkg/errors.NewWithCode",                                           // Stack from err3WithCode (wc.stack) starts at NewWithCode
+				"\nError 4 of 4: formatted error 4 - details for formatted error 4 (detailed)",                     // Corrected: single backslash for newline
 			},
 			debugOutput: true, // Enable debug output for this specific sub-test
 		},
 		{
-			name:   "group with message, no errors, using %s",
-			group:  lmccerrors.NewErrorGroup("Group C msg"),
-			format: "%s",
+			name:          "group with message, no errors, using %s",
+			group:         lmccerrors.NewErrorGroup("Group C msg"),
+			format:        "%s",
 			expectedParts: []string{"Group C msg"},
-			exactMatch: true,
+			exactMatch:    true,
 		},
 		{
-			name:   "group with one error, using %s",
-			group:  func() *lmccerrors.ErrorGroup {
+			name: "group with one error, using %s",
+			group: func() *lmccerrors.ErrorGroup {
 				eg := lmccerrors.NewErrorGroup("Group D")
 				eg.Add(err1)
 				return eg
 			}(),
-			format: "%s",
+			format:        "%s",
 			expectedParts: []string{"Group D: original error 1"},
-			exactMatch: true,
+			exactMatch:    true,
 		},
 		{
-			name:   "group with multiple errors, no group message, using %s",
-			group:  func() *lmccerrors.ErrorGroup {
+			name: "group with multiple errors, no group message, using %s",
+			group: func() *lmccerrors.ErrorGroup {
 				eg := lmccerrors.NewErrorGroup("")
 				eg.Add(err1)
 				eg.Add(err2)
 				return eg
 			}(),
-			format: "%s",
+			format:        "%s",
 			expectedParts: []string{"multiple errors occurred: original error 1; mock error 2"},
-			exactMatch: true,
+			exactMatch:    true,
 		},
 		{
-			name:   "group with multiple errors, with group message, using %v", // %v falls through to %s
-			group:  func() *lmccerrors.ErrorGroup {
+			name: "group with multiple errors, with group message, using %v", // %v falls through to %s
+			group: func() *lmccerrors.ErrorGroup {
 				eg := lmccerrors.NewErrorGroup("Group E")
 				eg.Add(err1)
 				eg.Add(err2)
 				return eg
 			}(),
-			format: "%v",
+			format:        "%v",
 			expectedParts: []string{"Group E: original error 1; mock error 2"},
-			exactMatch: true,
+			exactMatch:    true,
 		},
 		{
-			name:   "group with multiple errors, with group message, using %q", // %q quotes %s
-			group:  func() *lmccerrors.ErrorGroup {
+			name: "group with multiple errors, with group message, using %q", // %q quotes %s
+			group: func() *lmccerrors.ErrorGroup {
 				eg := lmccerrors.NewErrorGroup("Group F")
 				eg.Add(err1)
 				eg.Add(err2)
 				return eg
 			}(),
-			format: "%q",
+			format:        "%q",
 			expectedParts: []string{`"Group F: original error 1; mock error 2"`},
-			exactMatch: true,
+			exactMatch:    true,
 		},
 	}
 
@@ -483,9 +466,8 @@ func TestErrorGroup_Format(t *testing.T) {
 			// ALWAYS LOG FOR NOW TO DEBUG STACK TRACE
 			t.Logf("Formatted string for '%s':\n%s", tt.name, formattedStr)
 
-			if tt.debugOutput { // Keep original logic but also log above
-				// t.Logf("Formatted string for '%s':\n%s", tt.name, formattedStr) // Already logged above
-			}
+			// Debug output is already logged above for all test cases
+			_ = tt.debugOutput // Acknowledge the debug flag
 
 			if tt.exactMatch {
 				assert.Equal(t, strings.Join(tt.expectedParts, ""), formattedStr)
@@ -496,4 +478,4 @@ func TestErrorGroup_Format(t *testing.T) {
 			}
 		})
 	}
-} 
+}

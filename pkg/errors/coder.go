@@ -172,4 +172,4 @@ func IsUnknownCoder(coder Coder) bool {
 // GetUnknownCoder 返回预定义的未知 Coder。
 func GetUnknownCoder() Coder {
 	return unknownCoder
-} 
+}

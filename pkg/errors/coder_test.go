@@ -101,7 +101,7 @@ func TestPredefinedCoders(t *testing.T) {
 		{"ErrForbidden", ErrForbidden, 100005, 403, "Forbidden"},
 		{"ErrValidation", ErrValidation, 100006, 400, "Validation error"},
 		{"ErrTimeout", ErrTimeout, 100007, 504, "Request timeout"},
-        {"ErrTooManyRequests", ErrTooManyRequests, 100008, 429, "Too many requests"},
+		{"ErrTooManyRequests", ErrTooManyRequests, 100008, 429, "Too many requests"},
 	}
 
 	for _, tt := range tests {
@@ -117,7 +117,7 @@ func TestPredefinedCoders(t *testing.T) {
 			}
 			// Reference is expected to be empty for these predefined coders
 			if ref := tt.coder.Reference(); ref != "" {
-			    t.Errorf("%s.Reference() = %v, want \"\"", tt.name, ref)
+				t.Errorf("%s.Reference() = %v, want \"\"", tt.name, ref)
 			}
 		})
 	}
@@ -136,27 +136,24 @@ func TestIsUnknownCoder(t *testing.T) {
 	if IsUnknownCoder(coder) {
 		t.Errorf("IsUnknownCoder(customCoder) = true, want false")
 	}
-    if IsUnknownCoder(nil) {
-        t.Errorf("IsUnknownCoder(nil) = true, want false")
-    }
+	if IsUnknownCoder(nil) {
+		t.Errorf("IsUnknownCoder(nil) = true, want false")
+	}
 }
 
 // TestGetUnknownCoder tests the GetUnknownCoder helper function.
 // TestGetUnknownCoder 测试 GetUnknownCoder 辅助函数。
 func TestGetUnknownCoder(t *testing.T) {
-    got := GetUnknownCoder()
-    if got == nil {
-        t.Fatalf("GetUnknownCoder() returned nil")
-    }
-    if got.Code() != -1 || got.String() != "An internal server error occurred" || got.HTTPStatus() != 500 {
-        t.Errorf("GetUnknownCoder() returned unexpected Coder: Code=%d, String=\"%s\", HTTP=%d",
-            got.Code(), got.String(), got.HTTPStatus())
-    }
-    // Check if it's indeed the same instance (or an equivalent one)
-    if !IsUnknownCoder(got) {
-        t.Errorf("GetUnknownCoder() did not return the unknownCoder instance")
-    }
-} 
- 
- 
- 
+	got := GetUnknownCoder()
+	if got == nil {
+		t.Fatalf("GetUnknownCoder() returned nil")
+	}
+	if got.Code() != -1 || got.String() != "An internal server error occurred" || got.HTTPStatus() != 500 {
+		t.Errorf("GetUnknownCoder() returned unexpected Coder: Code=%d, String=\"%s\", HTTP=%d",
+			got.Code(), got.String(), got.HTTPStatus())
+	}
+	// Check if it's indeed the same instance (or an equivalent one)
+	if !IsUnknownCoder(got) {
+		t.Errorf("GetUnknownCoder() did not return the unknownCoder instance")
+	}
+}
