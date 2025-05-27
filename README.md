@@ -2,138 +2,79 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/lmcc-dev/lmcc-go-sdk)](https://goreportcard.com/report/github.com/lmcc-dev/lmcc-go-sdk)
 [![Go Reference](https://pkg.go.dev/badge/github.com/lmcc-dev/lmcc-go-sdk.svg)](https://pkg.go.dev/github.com/lmcc-dev/lmcc-go-sdk)
-<!-- Add other badges like build status, coverage later -->
 
-[**中文说明**](./README_zh.md)
+A comprehensive Go SDK providing foundational components and utilities for building robust applications.
 
-`lmcc-go-sdk` is a Go software development kit designed to provide foundational components and utilities for building robust applications.
+## Quick Links
 
-## ✨ Features
+- **[中文文档](README_zh.md)** - Chinese documentation
+- **[📚 Usage Guides](./docs/usage-guides/)** - Comprehensive module documentation
+- **[API Reference](https://pkg.go.dev/github.com/lmcc-dev/lmcc-go-sdk)** - Go package documentation
+- **[Examples](./examples/)** - Working code examples
 
-*   **Configuration Management (`pkg/config`):** Flexible loading from files (YAML, TOML), environment variables, and struct tag defaults with hot-reloading capabilities.
-*   **Logging (`pkg/log`):** Comprehensive logging capabilities including structured logging (with `zap`), configurable levels, formats (text, JSON), and output paths (console, files). Supports log rotation and dynamic reconfiguration via `pkg/config` for hot-reloading of logging settings. Context-aware logging for enhanced traceability.
-*   **Error Handling (`pkg/errors`):** A powerful and flexible error handling mechanism, inspired by `github.com/marmotedu/errors` but independently implemented. It provides stack traces, error wrapping, a system of defined error codes for consistent error identification, and supports error aggregation for handling multiple errors as a single unit. See [Error Code Documentation](./docs/errors/codes.md) for details on all defined codes. 
-*   **(More features to be added)**
+## Features
 
-## 🚀 Getting Started
+### 📦 Core Modules
+- **Configuration Management**: Hot-reload support with multiple sources
+- **Structured Logging**: High-performance logging with multiple formats
+- **Error Handling**: Enhanced error handling with codes and stack traces
 
-### Installation
+### 🚀 Developer Experience
+- **Type Safety**: Strong typing through user-defined structs
+- **Hot Reload**: Dynamic configuration updates without restart
+- **Multiple Formats**: JSON, YAML, TOML configuration support
+- **Environment Integration**: Automatic environment variable binding
 
-```bash
-go get github.com/lmcc-dev/lmcc-go-sdk
-```
-
-### Quick Start Example (Configuration)
+## Quick Example
 
 ```go
 package main
 
 import (
-	"context"
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	sdkconfig "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
-	sdklog "github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
-	"time"
+	"github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+	"github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
 )
 
-// Define your application's configuration structure
-type ServerConfig struct {
-	Host string        `mapstructure:"host" default:"localhost"`
-	Port int           `mapstructure:"port" default:"8080"`
-	Timeout time.Duration `mapstructure:"timeout" default:"5s"`
-}
-
-type AppConfig struct {
-	sdkconfig.Config // Embed the base SDK config (optional but recommended)
-	Server *ServerConfig `mapstructure:"server"`
-	Debug  bool          `mapstructure:"debug" default:"false"`
-}
-
-var MyConfig AppConfig
-
 func main() {
-	configFile := flag.String("config", "config.yaml", "Path to configuration file (e.g., config.yaml)")
-	flag.Parse()
-
+	// Initialize logging
+	log.Init(nil)
+	log.Info("Hello, LMCC Go SDK!")
+	
 	// Load configuration
-	err := sdkconfig.LoadConfig(
-		&MyConfig,
-		sdkconfig.WithConfigFile(*configFile, ""), // Load from file (type inferred)
-		// sdkconfig.WithEnvPrefix("MYAPP"),      // Optionally override default env prefix "LMCC"
-		// sdkconfig.WithHotReload(),             // Optionally enable hot reload
-	)
+	var cfg MyConfig
+	err := config.LoadConfig(&cfg)
 	if err != nil {
-		// Handle specific error types if needed, e.g., config file not found
-		log.Printf("WARN: Failed to load configuration from file '%s', using defaults and env vars: %v\n", *configFile, err)
-		// Decide if this is a fatal error or if proceeding with defaults is acceptable
-	} else {
-		log.Printf("Configuration loaded successfully from %s\n", *configFile)
+		log.Error("Failed to load config", "error", err)
 	}
-
-	// Access configuration values
-	fmt.Printf("Server Host: %s\n", MyConfig.Server.Host)
-	fmt.Printf("Server Port: %d\n", MyConfig.Server.Port)
-	fmt.Printf("Server Timeout: %s\n", MyConfig.Server.Timeout)
-	fmt.Printf("Debug Mode: %t\n", MyConfig.Debug)
-
-	// --- SDK Logging Quick Start ---
-	// Initialize a simple logger
-	logOpts := sdklog.NewOptions()
-	logOpts.Level = "info"       // Set desired level (e.g., "debug", "info", "warn")
-	logOpts.Format = "console"    // Choose "console" (human-readable) or "json"
-	logOpts.OutputPaths = []string{"stdout"} // Log to standard output. Can also be a file path e.g., ["./app.log"]
-	logOpts.EnableColor = true // For console output, makes it more readable
-	sdklog.Init(logOpts)
-	// Important: Defer Sync to flush logs before application exits.
-	// It's good practice to call this, especially for file-based logging.
-	defer func() {
-		if err := sdklog.Sync(); err != nil {
-			// Handle logger sync error, e.g., log to standard logger
-			// This is unlikely to happen with stdout but good for file logs.
-			fmt.Fprintf(os.Stderr, "Failed to sync sdk logger: %v\n", err)
-		}
-	}()
-
-	sdklog.Info("SDK Logger initialized. This is an INFO message.")
-	sdklog.Debugw("This is a DEBUG message with structured fields (won't be visible if level is 'info').", "userID", "user123", "action", "attempt_debug")
-	sdklog.Errorw("This is an ERROR message.", "operation", "database_connection", "attempt", 3, "success", false)
-
-	// Contextual logging example
-	ctx := context.Background()
-	// Typically, a trace ID would come from an incoming request or be generated.
-	ctxWithTrace := sdklog.ContextWithTraceID(ctx, "trace-id-example-xyz789") 
-	sdklog.Ctx(ctxWithTrace).Infow("Processing payment.", "customerID", "cust999", "amount", 100.50)
-
-	// Note: For advanced logging (file rotation, hot-reloading via pkg/config),
-	// please see the detailed pkg/log usage guide in `docs/usage-guides/log/log_usage_en.md`
-	// and the comprehensive example in `examples/simple-config-app/main.go`.
-
-	// Example config.yaml:
-	/*
-	server:
-	  host: "127.0.0.1"
-	  port: 9090
-	debug: true
-	*/
-
-	// Example Environment Variables (assuming default prefix LMCC):
-	// export LMCC_SERVER_PORT=9999
-	// export LMCC_DEBUG=true
 }
-
 ```
 
-## 📚 Usage Guides
+## Installation
 
-For detailed information on specific modules, please refer to the [Usage Guides](./docs/usage-guides/index_en.md).
+```bash
+go get github.com/lmcc-dev/lmcc-go-sdk
+```
 
-## 🤝 Contributing
+## Available Modules
 
-Contributions are welcome! Please refer to the `CONTRIBUTING.md` file (to be added) for guidelines.
+| Module | Description | Documentation |
+|--------|-------------|---------------|
+| **config** | Configuration management with hot-reload | [📖 Guide](./docs/usage-guides/config/) |
+| **log** | High-performance structured logging | [📖 Guide](./docs/usage-guides/log/) |
+| **errors** | Enhanced error handling with codes | [📖 Guide](./docs/usage-guides/errors/) |
 
-## 📄 License
+## Getting Started
 
-This project is licensed under the MIT License - see the `LICENSE` file (to be added) for details. 
+1. **[Browse all modules](./docs/usage-guides/)** in the usage guides directory
+2. **Choose a module** that fits your needs
+3. **Follow the Quick Start guide** for that module
+4. **Explore advanced features** using the detailed documentation
+5. **Check Best Practices** for production-ready patterns
+
+## Contributing
+
+Contributions are welcome! Please see our [contributing guidelines](./CONTRIBUTING.md).
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details. 

@@ -4,26 +4,45 @@ The `pkg/config` module provides flexible and robust configuration management ca
 
 ## Quick Links
 
-- [中文文档 (Chinese Documentation)](README_zh.md)
-- [Quick Start Guide](en/01_quick_start.md)
-- [Configuration Options](en/02_configuration_options.md)
-- [Hot Reload](en/03_hot_reload.md)
-- [Best Practices](en/04_best_practices.md)
-- [Integration Examples](en/05_integration_examples.md)
-- [Troubleshooting](en/06_troubleshooting.md)
+- **[中文文档](README_zh.md)** - Chinese documentation
+- **[Quick Start Guide](en/01_quick_start.md)** - Get started in minutes
+- **[Configuration Options](en/02_configuration_options.md)** - All available options
+- **[Hot Reload](en/03_hot_reload.md)** - Dynamic configuration updates
+- **[Best Practices](en/04_best_practices.md)** - Recommended patterns
+- **[Integration Examples](en/05_integration_examples.md)** - Real-world examples
+- **[Troubleshooting](en/06_troubleshooting.md)** - Common issues and solutions
+- **[Module Specification](en/07_module_specification.md)** - Complete API reference
 
-## Overview
+## Features
 
-The config module leverages the Viper library for handling various configuration sources such as files (YAML, JSON, TOML, etc.), environment variables, command-line flags, and default values defined via struct tags.
+### 🚀 High Performance
+- Built on Viper library for efficient configuration management
+- Minimal overhead for configuration access
+- Optimized for high-frequency configuration reads
 
-### Key Features
-
-- **Multiple Configuration Sources**: Load from files, environment variables, and defaults
-- **Hot Reload**: Automatic configuration reloading when files change
-- **Type Safety**: Strong typing through user-defined structs
-- **Callback System**: Register callbacks for configuration changes
-- **Environment Variable Binding**: Automatic binding with prefix support
+### 📝 Multiple Configuration Sources
+- **Files**: YAML, JSON, TOML, and more
+- **Environment Variables**: Automatic binding with prefix support
 - **Default Values**: Set defaults using struct tags
+- **Command Line**: Integration with flag packages
+
+### 🔄 Dynamic Configuration
+- **Hot Reload**: Automatic configuration reloading when files change
+- **Callback System**: Register callbacks for configuration changes
+- **Watch Mode**: Real-time configuration monitoring
+- **Graceful Updates**: Non-disruptive configuration updates
+
+### 🎯 Type Safety
+- **Strong Typing**: User-defined structs for configuration
+- **Validation**: Built-in validation support
+- **Automatic Unmarshaling**: Direct mapping to Go structs
+- **Error Handling**: Comprehensive error reporting
+
+### ⚙️ Easy Integration
+- **Simple API**: Minimal setup required
+- **Framework Agnostic**: Works with any Go application
+- **Middleware Support**: Easy integration with web frameworks
+- **Testing Friendly**: Mock and test configuration easily
 
 ## Quick Example
 
@@ -67,25 +86,94 @@ func main() {
 }
 ```
 
-## Documentation Structure
+## Installation
 
-### English Documentation
-- [Overview](en/00_overview.md) - Module overview and architecture
-- [Quick Start](en/01_quick_start.md) - Get started quickly
-- [Configuration Options](en/02_configuration_options.md) - Available options and settings
-- [Hot Reload](en/03_hot_reload.md) - Dynamic configuration updates
-- [Best Practices](en/04_best_practices.md) - Recommended patterns
-- [Integration Examples](en/05_integration_examples.md) - Real-world examples
-- [Troubleshooting](en/06_troubleshooting.md) - Common issues and solutions
+The config module is part of the lmcc-go-sdk:
 
-### Chinese Documentation (中文文档)
-- [概述](zh/00_overview_zh.md) - 模块概述和架构
-- [快速开始](zh/01_quick_start_zh.md) - 快速入门
-- [配置选项](zh/02_configuration_options_zh.md) - 可用选项和设置
-- [热重载](zh/03_hot_reload_zh.md) - 动态配置更新
-- [最佳实践](zh/04_best_practices_zh.md) - 推荐模式
-- [集成示例](zh/05_integration_examples_zh.md) - 实际应用示例
-- [故障排除](zh/06_troubleshooting_zh.md) - 常见问题和解决方案
+```bash
+go get github.com/lmcc-dev/lmcc-go-sdk
+```
+
+## Basic Configuration
+
+### Simple Configuration
+
+```go
+import "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+
+var cfg MyConfig
+err := config.LoadConfig(&cfg)
+```
+
+### Advanced Configuration
+
+```go
+cm, err := config.LoadConfigAndWatch(
+    &cfg,
+    config.WithConfigFile("config.yaml", ""),
+    config.WithEnvPrefix("APP"),
+    config.WithHotReload(true),
+)
+```
+
+### YAML Configuration
+
+```yaml
+# config.yaml
+server:
+  host: "localhost"
+  port: 8080
+  timeout: "30s"
+database:
+  host: "localhost"
+  port: 5432
+  name: "myapp"
+debug: false
+```
+
+## Integration with Other Modules
+
+The config module integrates seamlessly with other SDK modules:
+
+```go
+import (
+    "github.com/lmcc-dev/lmcc-go-sdk/pkg/config"
+    "github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
+)
+
+type AppConfig struct {
+    Log    log.Options    `mapstructure:"log"`
+    Server ServerConfig   `mapstructure:"server"`
+}
+
+func main() {
+    var cfg AppConfig
+    
+    // Load configuration
+    cm, err := config.LoadConfigAndWatch(&cfg, 
+        config.WithConfigFile("config.yaml", ""),
+        config.WithHotReload(true),
+    )
+    if err != nil {
+        panic(err)
+    }
+    
+    // Initialize logging with config
+    log.Init(&cfg.Log)
+    
+    // Register for hot reload
+    log.RegisterConfigHotReload(cm)
+    
+    log.Info("Application started with integrated configuration")
+}
+```
+
+## Getting Started
+
+1. **[Quick Start Guide](en/01_quick_start.md)** - Basic setup and usage
+2. **[Configuration Options](en/02_configuration_options.md)** - Detailed configuration
+3. **[Hot Reload](en/03_hot_reload.md)** - Dynamic updates
+4. **[Best Practices](en/04_best_practices.md)** - Production recommendations
 
 ## Contributing
 
