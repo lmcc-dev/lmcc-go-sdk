@@ -42,7 +42,8 @@ func TestLogRotationBySize(t *testing.T) {
 	opts.LogRotateMaxAge = 0     
 	opts.LogRotateCompress = false
 
-	logger := log.NewLogger(opts)
+	logger, errLogger := log.NewLogger(opts)
+	localRequire.NoError(errLogger)
 	localRequire.NotNil(logger)
 	defer func() { _ = logger.Sync() }()
 
@@ -161,7 +162,8 @@ func TestLogRotationMaxBackups(t *testing.T) {
 	opts.LogRotateMaxAge = 0
 	opts.LogRotateCompress = false
 
-	logger := log.NewLogger(opts)
+	logger, errLogger := log.NewLogger(opts)
+	localRequire.NoError(errLogger)
 	localRequire.NotNil(logger)
 	defer func() { _ = logger.Sync() }()
 
@@ -228,7 +230,8 @@ func TestLogRotationCompress(t *testing.T) {
 	opts.LogRotateMaxAge = 0
 	opts.LogRotateCompress = true
 
-	logger := log.NewLogger(opts)
+	logger, errLogger := log.NewLogger(opts)
+	localRequire.NoError(errLogger)
 	localRequire.NotNil(logger)
 	defer func() { _ = logger.Sync() }()
 

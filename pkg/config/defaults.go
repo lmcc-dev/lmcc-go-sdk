@@ -14,7 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/viper" // Add viper import
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors" // SDK errors package (SDK 错误包)
+	"github.com/spf13/viper"                                // Add viper import
 )
 
 // initializeNilPointers 递归地初始化给定结构体指针 target 内部所有为 nil 的结构体指针字段。
@@ -73,7 +74,10 @@ func initializeNilPointers(target interface{}) {
 //           (The configuration struct instance (or pointer to it) containing `default` tags.)
 //   keyPrefix: 当前递归层级的 Viper 键前缀。
 //              (The Viper key prefix for the current recursion level.)
-func setDefaultsFromTags(v *viper.Viper, config interface{}, keyPrefix string) {
+// Returns:
+//   error: 解析或设置默认值过程中发生的任何错误。
+//          (Any error that occurs during parsing or setting defaults.)
+func setDefaultsFromTags(v *viper.Viper, config interface{}, keyPrefix string) error {
 	val := reflect.ValueOf(config)
 	typ := reflect.TypeOf(config)
 
@@ -81,7 +85,7 @@ func setDefaultsFromTags(v *viper.Viper, config interface{}, keyPrefix string) {
 	if typ.Kind() == reflect.Ptr {
 		if val.IsNil() {
 			log.Printf("Warning: Encountered nil pointer at prefix '%s', cannot set defaults for it.", keyPrefix)
-			return // Cannot proceed with nil pointer
+			return nil // Cannot proceed with nil pointer, but not an error for the caller of setDefaultsFromTags itself.
 		}
 		val = val.Elem()
 		typ = val.Type()
@@ -89,7 +93,7 @@ func setDefaultsFromTags(v *viper.Viper, config interface{}, keyPrefix string) {
 
 	if typ.Kind() != reflect.Struct {
 		log.Printf("Warning: Expected a struct or pointer to struct at prefix '%s', got %s. Skipping defaults.", keyPrefix, typ.Kind())
-		return // Only process structs
+		return nil // Not an error for the caller, just skipping this part of the config.
 	}
 
 	for i := 0; i < typ.NumField(); i++ {
@@ -131,17 +135,17 @@ func setDefaultsFromTags(v *viper.Viper, config interface{}, keyPrefix string) {
 		// (在设置当前级别的默认值*之前*递归处理嵌套结构体)
 		if field.Type.Kind() == reflect.Struct {
 			// Recurse into struct value type (递归值类型结构体)
-			setDefaultsFromTags(v, fieldVal.Addr().Interface(), fullKey)
+			if err := setDefaultsFromTags(v, fieldVal.Addr().Interface(), fullKey); err != nil {
+				return err // Propagate error
+			}
 		} else if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
 			// Recurse into struct pointer type (递归指针类型结构体)
 			if !fieldVal.IsNil() {
-				setDefaultsFromTags(v, fieldVal.Interface(), fullKey)
-			} else {
-				// If the pointer is nil, we might still want to process defaults defined *within* that struct type.
-				// Create a temporary instance to traverse its tags.
-				tempInstance := reflect.New(field.Type.Elem()).Interface()
-				setDefaultsFromTags(v, tempInstance, fullKey)
-			}
+				if err := setDefaultsFromTags(v, fieldVal.Interface(), fullKey); err != nil {
+					return err // Propagate error
+				}
+			} // Do not create a tempInstance and recurse if fieldVal is nil, as this would set defaults for a non-existent path in Viper.
+			  // (如果 fieldVal 为 nil，则不创建 tempInstance 并递归，因为这会在 Viper 中为不存在的路径设置默认值。)
 		}
 
 		// Set the default value in Viper if tag exists and key is not already set
@@ -151,13 +155,17 @@ func setDefaultsFromTags(v *viper.Viper, config interface{}, keyPrefix string) {
 			// We attempt to parse the default value to the correct type for Viper
 			parsedVal, err := parseStringToType(defaultValue, field.Type)
 			if err != nil {
-				log.Printf("Warning: Failed to parse default tag value '%s' for key '%s' (field %s): %v. Setting as string.", defaultValue, fullKey, field.Name, err)
-				v.SetDefault(fullKey, defaultValue) // Fallback to setting as string
-			} else {
-				v.SetDefault(fullKey, parsedVal)
+				// Instead of logging and continuing, return the error
+				// (不再是记录日志并继续，而是返回错误)
+				return lmccerrors.WithCode(
+					lmccerrors.Wrapf(err, "failed to parse default tag value '%s' for key '%s' (field %s)", defaultValue, fullKey, field.Name),
+					lmccerrors.ErrConfigDefaultTagParse,
+				)
 			}
+			v.SetDefault(fullKey, parsedVal)
 		}
 	}
+	return nil // Return nil if no errors occurred (如果没有发生错误则返回 nil)
 }
 
 // parseStringToType 将字符串值 `value` 解析为 `targetType` 指定的 Go 类型。
@@ -175,12 +183,25 @@ func setDefaultsFromTags(v *viper.Viper, config interface{}, keyPrefix string) {
 //   error: 解析过程中发生的错误，或类型不受支持。
 //          (Any error during parsing, or if the type is unsupported.)
 func parseStringToType(value string, targetType reflect.Type) (interface{}, error) {
+	// Check if targetType itself is nil (e.g. reflect.TypeOf(nil) returns nil)
+	// (检查 targetType 本身是否为 nil（例如 reflect.TypeOf(nil) 返回 nil）)
+	if targetType == nil {
+		return nil, lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, "targetType cannot be nil for parsing") // Cannot parse to a nil type (无法解析为 nil 类型)
+	}
 	kind := targetType.Kind()
 
 	// Handle pointer types by looking at the element type
 	// (通过查看元素类型来处理指针类型)
 	if kind == reflect.Ptr {
-		targetType = targetType.Elem()
+		// Get the element type. If targetType represents a nil pointer type itself (which is unusual for a Type),
+		// or if Elem() somehow results in a nil Type (also unusual), it's an internal error.
+		// (获取元素类型。如果 targetType 本身代表一个 nil 指针类型（这对于 Type 来说不寻常），
+		// 或者如果 Elem() 不知何故导致了 nil Type（也不寻常），则这是一个内部错误。)
+		elemType := targetType.Elem()
+		if elemType == nil { // Check if the element type is nil
+			return nil, lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, "targetType is a pointer to an undefined element type")
+		}
+		targetType = elemType
 		kind = targetType.Kind()
 	}
 
@@ -189,20 +210,34 @@ func parseStringToType(value string, targetType reflect.Type) (interface{}, erro
 		return value, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		if targetType == reflect.TypeOf(time.Duration(0)) {
-			return time.ParseDuration(value)
+					d, err := time.ParseDuration(value)
+		if err != nil {
+			return nil, lmccerrors.WithCode(
+				lmccerrors.Wrapf(err, "failed to parse duration string '%s'", value),
+				lmccerrors.ErrConfigDefaultTagParse,
+			)
+		}
+			return d, nil
 		}
 		parsedInt, err := strconv.ParseInt(value, 0, targetType.Bits())
 		if err != nil {
-			return nil, fmt.Errorf("invalid integer format for '%s': %w", value, err)
+			return nil, lmccerrors.WithCode(
+				lmccerrors.Wrapf(err, "invalid integer format for '%s'", value),
+				lmccerrors.ErrConfigDefaultTagParse,
+			)
 		}
 		// Convert the int64 to the specific target integer type using reflection
+		// (使用反射将 int64 转换为特定的目标整数类型)
 		resultVal := reflect.New(targetType).Elem()
 		resultVal.SetInt(parsedInt)
 		return resultVal.Interface(), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		parsedUint, err := strconv.ParseUint(value, 0, targetType.Bits())
 		if err != nil {
-			return nil, fmt.Errorf("invalid unsigned integer format for '%s': %w", value, err)
+			return nil, lmccerrors.WithCode(
+				lmccerrors.Wrapf(err, "invalid unsigned integer format for '%s'", value),
+				lmccerrors.ErrConfigDefaultTagParse,
+			)
 		}
 		resultVal := reflect.New(targetType).Elem()
 		resultVal.SetUint(parsedUint)
@@ -210,199 +245,212 @@ func parseStringToType(value string, targetType reflect.Type) (interface{}, erro
 	case reflect.Float32, reflect.Float64:
 		parsedFloat, err := strconv.ParseFloat(value, targetType.Bits())
 		if err != nil {
-			return nil, fmt.Errorf("invalid float format for '%s': %w", value, err)
+			return nil, lmccerrors.WithCode(
+				lmccerrors.Wrapf(err, "invalid float format for '%s'", value),
+				lmccerrors.ErrConfigDefaultTagParse,
+			)
 		}
 		resultVal := reflect.New(targetType).Elem()
 		resultVal.SetFloat(parsedFloat)
 		return resultVal.Interface(), nil
 	case reflect.Bool:
-		return strconv.ParseBool(value)
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return nil, lmccerrors.WithCode(
+				lmccerrors.Wrapf(err, "invalid boolean format for '%s'", value),
+				lmccerrors.ErrConfigDefaultTagParse,
+			)
+		}
+		return b, nil
 	case reflect.Slice:
 		// Handle string slices specifically (特别处理字符串切片)
 		if targetType.Elem().Kind() == reflect.String {
 			if value == "" {
-				return []string{}, nil // Empty string means empty slice
+				return []string{}, nil // Empty string means empty slice (空字符串表示空切片)
 			}
 			// Allow comma or space separation, trim whitespace (允许逗号或空格分隔，修剪空白)
 			splitFunc := func(c rune) bool {
 				return c == ',' || c == ' '
 			}
 			parts := strings.FieldsFunc(value, splitFunc)
-			// Trim whitespace from each part
+			// Trim whitespace from each part (修剪每个部分的空白)
 			for i, p := range parts {
 				parts[i] = strings.TrimSpace(p)
 			}
 			return parts, nil
 		}
-		return nil, fmt.Errorf("parsing default values for non-string slices (type %v) is not supported", targetType)
+		return nil, lmccerrors.NewWithCode(lmccerrors.ErrConfigDefaultTagParse, fmt.Sprintf("unsupported slice type for default tag: %s. Only []string is supported.", targetType.Elem().Kind()))
 	default:
-		return nil, fmt.Errorf("unsupported type '%v' for default value parsing", targetType)
+		return nil, lmccerrors.NewWithCode(lmccerrors.ErrConfigDefaultTagParse, fmt.Sprintf("unsupported type for default tag: %s", kind))
 	}
 }
 
-// applyDefaultsToZeroFields 递归地遍历目标结构体 `target`，
-// 对于值为零值 (或 nil 指针) 且具有 `default` 标签的字段，尝试解析标签值并设置该字段。
-// 这个函数设计在 Viper/mapstructure 解码 *之后* 调用，用于填充未被其他方式覆盖的字段。
-// (applyDefaultsToZeroFields recursively traverses the target struct `target`,
-// and for fields that are zero-valued (or nil pointers) and have a `default` tag,
-// it attempts to parse the tag value and set the field.)
-// (This function is designed to be called *after* Viper/mapstructure decoding
-// to fill fields not overridden by other means.)
+// applyDefaultsToZeroFields 递归地将结构体中带有 `default` 标签的零值字段设置为其默认值。
+// 注意：此函数直接修改传入的结构体。
+// (applyDefaultsToZeroFields recursively sets zero-value fields with `default` tags in a struct to their default values.)
+// (Note: This function modifies the passed-in struct directly.)
 // Parameters:
-//   target: 指向要应用默认值的结构体的非 nil 指针。
-//           (A non-nil pointer to the struct to apply defaults to.)
+//   target: 指向要应用默认值的结构体的指针。
+//           (A pointer to the struct to apply defaults to.)
 // Returns:
-//   error: 在递归或应用默认值过程中发生的任何错误。
-//          (Any error occurring during recursion or default application.)
+//   error: 如果解析默认标签或设置值时发生错误。
+//          (Error if parsing default tag or setting value fails.)
 func applyDefaultsToZeroFields(target interface{}) error {
-	val := reflect.ValueOf(target)
+	v := reflect.ValueOf(target)
 
-	// Must be a non-nil pointer to a struct
-	if val.Kind() != reflect.Ptr || val.IsNil() {
-		return fmt.Errorf("target must be a non-nil pointer, got %T", target)
+	if v.Kind() != reflect.Ptr || v.IsNil() || v.Elem().Kind() != reflect.Struct {
+		return lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, "applyDefaultsToZeroFields expects a non-nil pointer to a struct")
 	}
-	elem := val.Elem()
-	if elem.Kind() != reflect.Struct {
-		return fmt.Errorf("target must be a pointer to a struct, got pointer to %s", elem.Kind())
-	}
-	typ := elem.Type()
 
-	for i := 0; i < elem.NumField(); i++ {
-		fieldVal := elem.Field(i)
-		fieldType := typ.Field(i)
+	structVal := v.Elem()
+	structType := structVal.Type()
 
-		if !fieldType.IsExported() {
+	for i := 0; i < structVal.NumField(); i++ {
+		fieldVal := structVal.Field(i)
+		fieldType := structType.Field(i)
+
+		if !fieldVal.CanSet() || !fieldType.IsExported() {
 			continue
 		}
 
-		// Recurse first for nested structs (pointer or value)
-		if fieldVal.Kind() == reflect.Struct && fieldVal.CanAddr() {
-			if err := applyDefaultsToZeroFields(fieldVal.Addr().Interface()); err != nil {
-				return fmt.Errorf("error applying defaults to nested struct field %s: %w", fieldType.Name, err)
-			}
-		} else if fieldVal.Kind() == reflect.Ptr && fieldVal.Type().Elem().Kind() == reflect.Struct {
-			// Ensure pointer is initialized (should be by initializeNilPointers)
-			if !fieldVal.IsNil() {
+		defaultTag := fieldType.Tag.Get("default")
+		isZero := fieldVal.IsZero()
+
+		// Handle pointers to structs: if nil, initialize and recurse
+		// (处理结构体指针：如果为 nil，则初始化并递归)
+		if fieldVal.Kind() == reflect.Ptr && fieldVal.Type().Elem().Kind() == reflect.Struct {
+			if fieldVal.IsNil() {
+				// Only initialize if there's a default tag anywhere within the nested struct or if the pointer field itself has a default.
+				// (仅当嵌套结构体内部任何位置有默认标签，或者指针字段本身有默认值时才初始化。)
+				// For simplicity in this function, we check if the pointer field itself has a default OR if any sub-field has one.
+				hasAnyDefault := defaultTag != "" || hasDefaultsDefined(fieldVal.Type().Elem())
+				if hasAnyDefault {
+					newStructPtr := reflect.New(fieldVal.Type().Elem())
+					fieldVal.Set(newStructPtr)
+					if err := applyDefaultsToZeroFields(fieldVal.Interface()); err != nil {
+						return err // Propagate error from recursive call (从递归调用传播错误)
+					}
+					isZero = false // No longer considered zero for the purpose of applying a default *to the pointer itself*
+				}
+			} else {
+				// If not nil, recurse to apply defaults to its fields
+				// (如果不为 nil，则递归以将默认值应用于其字段)
 				if err := applyDefaultsToZeroFields(fieldVal.Interface()); err != nil {
-					return fmt.Errorf("error applying defaults to nested pointer field %s: %w", fieldType.Name, err)
+					return err // Propagate error
 				}
 			}
-			// If nil, we can't set defaults inside it. initializeNilPointers should handle creation.
-			// We don't need to create it here again just for defaults.
+		} else if fieldVal.Kind() == reflect.Struct && fieldVal.CanAddr() {
+			// Recurse for non-pointer struct fields to handle their nested defaults
+			// (对非指针结构体字段进行递归以处理其嵌套的默认值)
+			if err := applyDefaultsToZeroFields(fieldVal.Addr().Interface()); err != nil {
+				return err // Propagate error
+			}
 		}
 
-		// Apply default if the field is currently zero and has a default tag
-		defaultValueTag := fieldType.Tag.Get("default")
-		if defaultValueTag != "" && fieldVal.CanSet() {
-			isZero := false
-			// Use IsZero() for most types, check IsNil() for pointers
-			if fieldVal.Kind() == reflect.Ptr {
-				isZero = fieldVal.IsNil()
-			} else {
-				// We need to be careful with IsZero for complex types like time.Time or structs.
-				// Relying on IsZero might be okay if we assume defaults are for basic types, slices, time.Duration.
-				isZero = fieldVal.IsZero()
+		// Apply default value if the field is zero and a default tag exists
+		// (如果字段为零且存在默认标签，则应用默认值)
+		if isZero && defaultTag != "" {
+			parsedVal, err := parseStringToType(defaultTag, fieldVal.Type())
+			if err != nil {
+				return lmccerrors.WithCode(
+					lmccerrors.Wrapf(err, "error parsing default tag '%s' for field '%s.%s'", defaultTag, structType.Name(), fieldType.Name),
+					lmccerrors.ErrConfigDefaultTagParse,
+				)
 			}
 
-			if isZero {
-				// Parse the default value string to the field's type
-				targetFieldType := fieldType.Type // Get the type of the field itself
-				parsedValue, err := parseStringToType(defaultValueTag, targetFieldType)
-				if err != nil {
-					log.Printf("Warning: applyDefaultsToZeroFields: Failed to parse default value for field %s from tag '%s': %v. Skipping default.", fieldType.Name, defaultValueTag, err)
-					continue
-				}
-
-				parsedReflectValue := reflect.ValueOf(parsedValue)
-
-				// Handle setting pointer vs non-pointer fields
-				if fieldVal.Kind() == reflect.Ptr {
-					// Ensure the parsed value's type matches the pointer's element type
-					if fieldVal.Type().Elem() == parsedReflectValue.Type() {
-						// Create a new pointer to the parsed value and set the field
-						newPtr := reflect.New(fieldVal.Type().Elem())
-						newPtr.Elem().Set(parsedReflectValue)
-						fieldVal.Set(newPtr)
-					} else {
-						// This might happen if parseStringToType returns a value type for a pointer field request (e.g., int for *int).
-						// Let's try setting the element if possible.
-						if fieldVal.IsNil() { // Defensive check, should have been initialized
-							log.Printf("Warning: applyDefaultsToZeroFields: Cannot set nil pointer field %s directly with non-pointer default value.", fieldType.Name)
-							continue
-						}
-						if fieldVal.Elem().CanSet() && fieldVal.Elem().Type() == parsedReflectValue.Type() {
-							fieldVal.Elem().Set(parsedReflectValue)
-						} else {
-							log.Printf("Warning: applyDefaultsToZeroFields: Type mismatch for pointer field %s: default tag parsed type %T, field element type %s. Skipping.",
-								fieldType.Name, parsedValue, fieldVal.Type().Elem())
-						}
+			targetVal := reflect.ValueOf(parsedVal)
+			if fieldVal.Kind() == reflect.Ptr {
+				// If the field is a pointer, create a new pointer to the parsed value
+				// (如果字段是指针，则创建指向解析值的新指针)
+				ptr := reflect.New(fieldVal.Type().Elem())
+				// Ensure targetVal is assignable to ptr.Elem()
+				if ptr.Elem().Type() != targetVal.Type() {
+					// This can happen if parseStringToType returns, e.g., int, but field is *int64.
+					// We need to convert targetVal to the element type of the pointer.
+					if !targetVal.CanConvert(ptr.Elem().Type()) {
+						return lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, 
+							fmt.Sprintf("type mismatch: cannot convert parsed default value of type %s to field %s.%s's element type %s", 
+							targetVal.Type(), structType.Name(), fieldType.Name, ptr.Elem().Type()))
 					}
-				} else { // Field is not a pointer
-					// Ensure the parsed value's type can be assigned to the field's type
-					if parsedReflectValue.Type().AssignableTo(fieldVal.Type()) {
-						fieldVal.Set(parsedReflectValue)
-					} else {
-						// Attempt conversion if possible (e.g., int64 to int)
-						if parsedReflectValue.CanConvert(fieldVal.Type()) {
-							convertedValue := parsedReflectValue.Convert(fieldVal.Type())
-							fieldVal.Set(convertedValue)
-						} else {
-							log.Printf("Warning: applyDefaultsToZeroFields: Type mismatch for field %s: default tag parsed type %T, field type %s. Skipping.",
-								fieldType.Name, parsedValue, fieldVal.Type())
-						}
-					}
+					targetVal = targetVal.Convert(ptr.Elem().Type())
 				}
+				ptr.Elem().Set(targetVal)
+				fieldVal.Set(ptr)
+					} else {
+				// Ensure targetVal is assignable to fieldVal
+				if fieldVal.Type() != targetVal.Type() {
+					if !targetVal.CanConvert(fieldVal.Type()) {
+						return lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, 
+							fmt.Sprintf("type mismatch: cannot convert parsed default value of type %s to field %s.%s's type %s", 
+							targetVal.Type(), structType.Name(), fieldType.Name, fieldVal.Type()))
+					}
+					targetVal = targetVal.Convert(fieldVal.Type())
+				}
+				fieldVal.Set(targetVal)
 			}
 		}
 	}
 	return nil
 }
 
-// DefaultConfigLoader implements the Loader interface for setting defaults.
-// (DefaultConfigLoader 实现 Loader 接口用于设置默认值。)
+// hasDefaultsDefined checks if a struct type or any of its nested struct types have default tags.
+// (hasDefaultsDefined 检查结构体类型或其任何嵌套结构体类型是否具有默认标签。)
+func hasDefaultsDefined(structType reflect.Type) bool {
+	if structType.Kind() != reflect.Struct {
+		return false
+	}
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		if field.Tag.Get("default") != "" {
+			return true
+		}
+		if field.Type.Kind() == reflect.Struct {
+			if hasDefaultsDefined(field.Type) {
+				return true
+			}
+		} else if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
+			if hasDefaultsDefined(field.Type.Elem()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// DefaultConfigLoader is a loader that applies defaults from struct tags to Viper.
+// (DefaultConfigLoader 是一个加载器，它将结构体标签中的默认值应用于 Viper。)
 type DefaultConfigLoader struct {
 	defaults interface{} // A pointer to the struct defining the defaults (指向定义默认值的结构体的指针)
 }
 
-// NewDefaultConfigLoader 创建一个新的 DefaultConfigLoader 实例。
-// 这个加载器用于从结构体标签中读取 `default` 值并设置到 Viper 中。
-// (NewDefaultConfigLoader creates a new DefaultConfigLoader instance.)
-// (This loader is used to read `default` values from struct tags and set them in Viper.)
-// Parameters:
-//   defaultsStructPtr: 一个指向定义了 `default` 标签的结构体实例的非 nil 指针。
-//                      (A non-nil pointer to a struct instance where `default` tags are defined.)
-// Returns:
-//   *DefaultConfigLoader: 指向新创建的加载器的指针。
-//                         (Pointer to the newly created loader.)
+// NewDefaultConfigLoader creates a new loader for applying struct tag defaults.
+// `defaultsStructPtr` must be a pointer to a struct.
+// (NewDefaultConfigLoader 创建一个新的加载器，用于应用结构体标签默认值。)
+// (`defaultsStructPtr` 必须是指向结构体的指针。)
 func NewDefaultConfigLoader(defaultsStructPtr interface{}) *DefaultConfigLoader {
-	// Ensure it's a pointer to a struct
-	v := reflect.ValueOf(defaultsStructPtr)
-	if v.Kind() != reflect.Ptr || v.IsNil() || v.Elem().Kind() != reflect.Struct {
-		log.Panicf("NewDefaultConfigLoader requires a non-nil pointer to a struct, got %T", defaultsStructPtr)
+	val := reflect.ValueOf(defaultsStructPtr)
+	if val.Kind() != reflect.Ptr || val.IsNil() {
+		panic(lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, "NewDefaultConfigLoader expects a non-nil pointer to a struct"))
+	}
+	if val.Elem().Kind() != reflect.Struct {
+		panic(lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, fmt.Sprintf("NewDefaultConfigLoader expects a pointer to a struct, not a pointer to %s", val.Elem().Kind())))
 	}
 	return &DefaultConfigLoader{defaults: defaultsStructPtr}
 }
 
-// Load 使用内部存储的默认配置结构体，调用 setDefaultsFromTags 将默认值设置到提供的 Viper 实例中。
-// (Load uses the internally stored default config struct to call setDefaultsFromTags, applying defaults to the provided Viper instance.)
-// Parameters:
-//   v: 要设置默认值的 Viper 实例。
-//      (The Viper instance to set defaults on.)
-// Returns:
-//   error: 目前总是返回 nil，但保留以符合接口。
-//          (Currently always returns nil, but reserved for interface compliance.)
+// Load applies the defaults defined in the struct (via `default` tags) to the Viper instance.
+// (Load 将结构体中定义的默认值（通过 `default` 标签）应用于 Viper 实例。)
 func (l *DefaultConfigLoader) Load(v *viper.Viper) error {
-	log.Println("Applying default configuration values from struct tags to Viper...") // Clarify action
-	setDefaultsFromTags(v, l.defaults, "")
-	log.Println("Finished applying default configuration values to Viper.") // Clarify action
-	return nil
+	if l.defaults == nil {
+		return lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, "DefaultConfigLoader.defaults is nil, cannot load")
+	}
+	// Set defaults in Viper from struct tags
+	// (从结构体标签在 Viper 中设置默认值)
+	return setDefaultsFromTags(v, l.defaults, "")
 }
 
-// Name 返回加载器的名称。
-// (Name returns the name of the loader.)
-// Returns:
-//   string: 加载器的名称 ("DefaultTagLoader")。
-//           (The name of the loader ("DefaultTagLoader").)
+// Name returns the name of the loader.
+// (Name 返回加载器的名称。)
 func (l *DefaultConfigLoader) Name() string {
 	return "DefaultTagLoader"
 }

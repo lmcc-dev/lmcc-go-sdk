@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors" // SDK errors package (SDK 错误包)
 	"github.com/spf13/viper"
 )
 
@@ -124,7 +125,11 @@ func bindEnvs(v *viper.Viper, replacer *strings.Replacer, iface interface{}, par
 			if err := v.BindEnv(viperKey, envVarName); err != nil {
 				// 通常 BindEnv 不会返回错误，但以防万一
 				// (BindEnv usually doesn't return an error, but just in case)
-				log.Printf("Warning: Failed to bind env var '%s' to key '%s': %v", envVarName, viperKey, err)
+				wrappedErr := lmccerrors.WithCode(
+			lmccerrors.Wrapf(err, "failed to bind env var '%s' to key '%s'", envVarName, viperKey),
+			lmccerrors.ErrConfigEnvBind,
+		)
+				log.Printf("Warning: %s: %+v", lmccerrors.ErrConfigEnvBind.String(), wrappedErr)                                                    // 使用标准 log，但错误已包装 (Use standard log, but error is wrapped)
 			}
 		}
 	}

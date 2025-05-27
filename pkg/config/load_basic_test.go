@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -225,4 +226,50 @@ enabled = false
 	assert.Equal(t, "toml-api-key", loadedCfg.CustomFeature.APIKey)
 	assert.Equal(t, 50, loadedCfg.CustomFeature.RateLimit)
 	assert.False(t, loadedCfg.CustomFeature.Enabled)
+}
+
+func TestLoadConfig_YAML_InvalidPath(t *testing.T) {
+	var loadedCfg testAppConfig
+	initializeTestConfig(&loadedCfg)
+
+	nonExistentFile := "/path/to/non_existent_config.yaml"
+
+	err := LoadConfig(&loadedCfg, WithConfigFile(nonExistentFile, "yaml"))
+	require.Error(t, err, "LoadConfig should return an error for non-existent YAML file")
+
+	// Check if the error is an lmccerror and has the correct code
+	// (检查错误是否为 lmccerror 类型并且具有正确的代码)
+	parsedCoder := lmccerrors.GetCoder(err)
+	assert.NotNil(t, parsedCoder, "Parsed coder should not be nil")
+	assert.Equal(t, lmccerrors.ErrConfigFileRead.Code(), parsedCoder.Code(), "Error code should be ErrConfigFileRead")
+
+	// Optionally, check parts of the error message
+	// (可选地，检查错误消息的部分内容)
+	assert.Contains(t, err.Error(), lmccerrors.ErrConfigFileRead.String(), "Error message should contain the coder string")
+	assert.Contains(t, err.Error(), nonExistentFile, "Error message should contain the invalid file path")
+}
+
+func TestLoadConfig_YAML_InvalidContent(t *testing.T) {
+	invalidYamlContent := `
+server:
+  host: "127.0.0.1"
+  port: 9999
+  unexpected_token // this will cause a parse error
+log:
+  level: "debug"
+`
+	configFile, cleanup := createTempConfigFile(t, invalidYamlContent, "yaml")
+	defer cleanup()
+
+	var loadedCfg testAppConfig
+	initializeTestConfig(&loadedCfg)
+
+	err := LoadConfig(&loadedCfg, WithConfigFile(configFile, "yaml"))
+	require.Error(t, err, "LoadConfig should return an error for invalid YAML content")
+
+	parsedCoder := lmccerrors.GetCoder(err)
+	assert.NotNil(t, parsedCoder, "Parsed coder should not be nil")
+	assert.Equal(t, lmccerrors.ErrConfigFileRead.Code(), parsedCoder.Code(), "Error code should be ErrConfigFileRead for parse error")
+	assert.Contains(t, err.Error(), lmccerrors.ErrConfigFileRead.String(), "Error message should contain the coder string")
+	assert.Contains(t, err.Error(), configFile, "Error message should contain the config file path")
 } 

@@ -9,6 +9,9 @@ package config
 import (
 	"testing"
 
+	stdErrors "errors"
+
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +38,8 @@ log: level: "info" # Invalid YAML syntax (missing indentation, extra quote)
 	require.Error(t, err, "LoadConfig should return error for invalid YAML content")
 	// Optionally check the error type or message if needed for more specific validation
 	// assert.Contains(t, err.Error(), "failed to read config file")
+	assert.True(t, stdErrors.Is(err, lmccerrors.ErrConfigFileRead), "Error code should be ErrConfigFileRead for invalid content")
+	assert.Contains(t, err.Error(), lmccerrors.ErrConfigFileRead.String(), "Error message should contain the coder string for invalid content")
 }
 
 func TestLoadConfig_InvalidConfigType(t *testing.T) {
@@ -52,6 +57,10 @@ server:
 	// Execute & Assert: LoadConfig should return an error for unsupported config type
 	err := LoadConfig(&loadedCfg, WithConfigFile(configFile, "unsupported"))
 	require.Error(t, err, "LoadConfig should return error for unsupported config type")
-	// Viper returns a specific error type in this case
-	assert.Contains(t, err.Error(), "Unsupported Config Type")
+
+	// Viper returns a specific error type in this case, which gets wrapped.
+	// (Viper 在这种情况下返回特定的错误类型，该错误类型会被包装。)
+	assert.True(t, stdErrors.Is(err, lmccerrors.ErrConfigFileRead), "Error code should be ErrConfigFileRead for unsupported type")
+	assert.Contains(t, err.Error(), "Unsupported Config Type", "Original error message about unsupported type should be present")
+	assert.Contains(t, err.Error(), lmccerrors.ErrConfigFileRead.String(), "Error message should contain the coder string for unsupported type")
 } 

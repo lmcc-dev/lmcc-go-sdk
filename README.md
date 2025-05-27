@@ -12,6 +12,7 @@
 
 *   **Configuration Management (`pkg/config`):** Flexible loading from files (YAML, TOML), environment variables, and struct tag defaults with hot-reloading capabilities.
 *   **Logging (`pkg/log`):** Comprehensive logging capabilities including structured logging (with `zap`), configurable levels, formats (text, JSON), and output paths (console, files). Supports log rotation and dynamic reconfiguration via `pkg/config` for hot-reloading of logging settings. Context-aware logging for enhanced traceability.
+*   **Error Handling (`pkg/errors`):** A powerful and flexible error handling mechanism, inspired by `github.com/marmotedu/errors` but independently implemented. It provides stack traces, error wrapping, a system of defined error codes for consistent error identification, and supports error aggregation for handling multiple errors as a single unit. See [Error Code Documentation](./docs/errors/codes.md) for details on all defined codes. 
 *   **(More features to be added)**
 
 ## 🚀 Getting Started

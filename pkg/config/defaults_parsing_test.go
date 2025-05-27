@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	// lmccerrors
+	stdErrors "errors" // Standard library errors for IsCode replacement
+
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -239,7 +243,8 @@ func TestSetDefaultsFromTags_EdgeCases(t *testing.T) {
 	}
 
 	v := viper.New()
-	setDefaultsFromTags(v, cfg, "prefix") // Use a prefix
+	err := setDefaultsFromTags(v, cfg, "prefix") // Use a prefix
+	require.NoError(t, err)
 
 	// Check basic fields with prefix
 	assert.Equal(t, "omit_default", v.GetString("prefix.field1"))
@@ -248,18 +253,39 @@ func TestSetDefaultsFromTags_EdgeCases(t *testing.T) {
 	assert.False(t, v.IsSet("prefix.SkipMe"), "Skipped field SkipMe should not be set") // mapstructure tag '-' takes precedence
 
 	// Check nested struct values (value type)
-	assert.True(t, v.IsSet("prefix.NestedVal.keep"), "NestedVal.keep should be set")
 	assert.Equal(t, "nested_keep", v.GetString("prefix.NestedVal.keep"))
-	assert.False(t, v.IsSet("prefix.NestedVal.SkipMe"), "NestedVal.SkipMe should not be set")
+	assert.False(t, v.IsSet("prefix.NestedVal.SkipMe"))
 
-	// Check defaults from *within* the nil pointer struct type (NilPtr)
-	// The tags should still be processed even if the field is nil in the source struct.
-	assert.True(t, v.IsSet("prefix.NilPtr.keep"), "Defaults from within NilPtr struct type should be set")
-	assert.Equal(t, "nested_keep", v.GetString("prefix.NilPtr.keep"))
-	assert.False(t, v.IsSet("prefix.NilPtr.SkipMe"), "NilPtr.SkipMe should not be set")
+	// Check for NestedPtr - if it was nil, its defaults shouldn't be set
+	assert.False(t, v.IsSet("prefix.NestedPtr.keep"), "Defaults for nil NestedPtr should not be set")
 
-	// Check that NestedPtr fields ARE set because setDefaultsFromTags processes tags
-	// from the type even if the pointer field itself is nil in the input struct.
-	assert.True(t, v.IsSet("prefix.NestedPtr.keep"), "NestedPtr.keep SHOULD be set due to processing tags from the type")
-	assert.Equal(t, "nested_keep", v.GetString("prefix.NestedPtr.keep")) // Verify the value is correct
-} 
+	// Check for NilPtr - if it was nil, its defaults shouldn't be set
+	assert.False(t, v.IsSet("prefix.NilPtr.keep"), "Defaults for nil NilPtr should not be set")
+
+	// Initialize NestedPtr and re-run to check its defaults
+	cfg.NestedPtr = &NestedWithSkip{}
+	v2 := viper.New()
+	err = setDefaultsFromTags(v2, cfg, "prefix2") // Use a new viper instance and prefix
+	require.NoError(t, err)
+	assert.Equal(t, "nested_keep", v2.GetString("prefix2.NestedPtr.keep"))
+}
+
+func TestSetDefaultsFromTags_ErrorCase(t *testing.T) {
+	type InvalidTagStruct struct {
+		GoodField string    `default:"good_value"`
+		BadField  int       `default:"this-is-not-an-integer"`
+		NextField float64   `default:"3.14"`
+	}
+
+	cfg := &InvalidTagStruct{}
+	v := viper.New()
+
+	err := setDefaultsFromTags(v, cfg, "") // No prefix
+	require.Error(t, err, "setDefaultsFromTags should return an error for invalid default tag")
+	assert.True(t, stdErrors.Is(err, lmccerrors.ErrConfigDefaultTagParse), "Error code should be ErrConfigDefaultTagParse")
+
+	// Verify that fields before the error were set, and fields after (and the error field) were not.
+	assert.Equal(t, "good_value", v.GetString("GoodField"), "GoodField should be set in Viper")
+	assert.False(t, v.IsSet("BadField"), "BadField with invalid default should not be set in Viper")
+	assert.False(t, v.IsSet("NextField"), "NextField after error should not be set in Viper")
+}

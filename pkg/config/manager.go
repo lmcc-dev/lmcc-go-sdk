@@ -7,9 +7,10 @@
 package config
 
 import (
-	"log"
+	"log" // Use standard log package to avoid import cycle (使用标准日志包以避免导入循环)
 	"sync"
 
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors" // SDK errors package (SDK 错误包)
 	"github.com/spf13/viper"
 )
 
@@ -70,7 +71,7 @@ func (cm *configManager[T]) RegisterCallback(callback func(v *viper.Viper, cfg a
 	cm.callbackMux.Lock()
 	defer cm.callbackMux.Unlock()
 	cm.callbacks = append(cm.callbacks, callback)
-	log.Printf("Info: Registered a general configuration change callback.")
+	log.Printf("Info: Registered a general configuration change callback.") // 使用标准 log (Use standard log)
 }
 
 // RegisterSectionChangeCallback 注册一个针对特定配置节的变更回调函数。
@@ -84,7 +85,7 @@ func (cm *configManager[T]) RegisterSectionChangeCallback(sectionKey string, cal
 	cm.sectionCallbacksMux.Lock()
 	defer cm.sectionCallbacksMux.Unlock()
 	cm.sectionCallbacks[sectionKey] = append(cm.sectionCallbacks[sectionKey], callback)
-	log.Printf("Info: Registered a configuration change callback for section [%s].", sectionKey)
+	log.Printf("Info: Registered a configuration change callback for section [%s].", sectionKey) // 使用标准 log (Use standard log)
 }
 
 // notifyCallbacks 在配置变更后通知所有注册的回调函数。
@@ -98,10 +99,14 @@ func (cm *configManager[T]) notifyCallbacks() {
 	cm.callbackMux.RUnlock()
 
 	if len(currentCallbacks) > 0 {
-		log.Printf("Info: Notifying %d general callback(s) about configuration change...", len(currentCallbacks))
+		log.Printf("Info: Notifying %d general callback(s) about configuration change...", len(currentCallbacks)) // 使用标准 log (Use standard log)
 		for i, callback := range currentCallbacks {
 			if err := callback(cm.v, cm.cfg); err != nil {
-				log.Printf("Error executing general configuration change callback %d: %v", i+1, err)
+				wrappedErr := lmccerrors.WithCode(
+				lmccerrors.Wrapf(err, "error executing general configuration change callback %d", i+1),
+				lmccerrors.ErrConfigHotReload,
+			)
+				log.Printf("%s: %+v", lmccerrors.ErrConfigHotReload.String(), wrappedErr)
 			}
 		}
 	}
@@ -118,7 +123,7 @@ func (cm *configManager[T]) notifyCallbacks() {
 	cm.sectionCallbacksMux.RUnlock()
 
 	if len(currentSectionCallbacks) > 0 {
-		log.Printf("Info: Notifying section-specific callback(s) about configuration change...")
+		log.Printf("Info: Notifying section-specific callback(s) about configuration change...") // 使用标准 log (Use standard log)
 		for sectionKey, callbacksSlice := range currentSectionCallbacks {
 			// 理论上，我们应该只在特定节实际更改时调用这些回调。
 			// 但 Viper 的 OnConfigChange 不提供此类粒度信息。
@@ -126,10 +131,14 @@ func (cm *configManager[T]) notifyCallbacks() {
 			// (Theoretically, we should only call these if the specific section actually changed.
 			// However, Viper's OnConfigChange doesn't provide that granular info.
 			// So, we notify all registered section callbacks and let them handle it.)
-			log.Printf("Info: Notifying %d callback(s) for section [%s]...", len(callbacksSlice), sectionKey)
+			log.Printf("Info: Notifying %d callback(s) for section [%s]...", len(callbacksSlice), sectionKey) // 使用标准 log (Use standard log)
 			for i, callback := range callbacksSlice {
 				if err := callback(cm.v); err != nil {
-					log.Printf("Error executing configuration change callback for section [%s], callback %d: %v", sectionKey, i+1, err)
+					wrappedErr := lmccerrors.WithCode(
+				lmccerrors.Wrapf(err, "error executing configuration change callback for section [%s], callback %d", sectionKey, i+1),
+				lmccerrors.ErrConfigHotReload,
+			)
+					log.Printf("%s: %+v", lmccerrors.ErrConfigHotReload.String(), wrappedErr)
 				}
 			}
 		}

@@ -59,10 +59,10 @@ Basic Usage:
 	// (在生产环境中，考虑使用更具体的路径或允许其可配置。)
 	cm, err := config.LoadConfigAndWatch(
 		&cfg,
-		config.WithConfigFile("config/app.yaml"), // Specify config file (指定配置文件)
-		config.WithEnvPrefix("APP"),             // Env var prefix (e.g., APP_SERVER_PORT) (环境变量前缀)
-		config.WithHotReload(),                  // Enable hot-reload (启用热重载)
-		// config.WithEnvKeyReplacer(strings.NewReplacer(".", "_")), // Optional: if env vars use '_' instead of '.'
+		config.WithConfigFile("config/app.yaml", ""), // Specify config file (指定配置文件)
+		config.WithEnvPrefix("APP"),                   // Env var prefix (e.g., APP_SERVER_PORT) (环境变量前缀)
+		config.WithHotReload(true),                    // Enable hot-reload (启用热重载)
+		config.WithEnvVarOverride(true),               // Enable env var override (启用环境变量覆盖)
 	)
 	if err != nil {
 		// In a real application, consider more sophisticated error logging or a graceful shutdown.
@@ -71,10 +71,9 @@ Basic Usage:
 	}
 
 	// Register a callback for changes (注册变更回调)
-	// The callback ID allows for unregistering if needed, though not shown in this basic example.
-	// (回调 ID 允许在需要时注销回调，尽管此基本示例中未展示。)
-	callbackID := "myAppConfigUpdater"
-	cm.RegisterCallback(callbackID, func(v *viper.Viper, currentCfgPtr any) error {
+	// The callback receives the Viper instance and the updated config object
+	// (回调接收 Viper 实例和更新后的配置对象)
+	cm.RegisterCallback(func(v *viper.Viper, currentCfgPtr any) error {
 		appCfg, ok := currentCfgPtr.(*MyConfig) // Type assertion (类型断言)
 		if !ok {
 			// This should ideally not happen if LoadConfigAndWatch was called with *MyConfig
@@ -97,9 +96,14 @@ Basic Usage:
 		// (如果返回错误，热重载可能会被记录为失败，但 Viper 会继续监视。)
 		return nil
 	})
-	if err != nil { // Check error from RegisterCallback, though in current implementation it's nil
-		log.Printf("WARN: Failed to register config change callback '%s': %v", callbackID, err)
-	}
+
+	// You can also register section-specific callbacks (您也可以注册特定节的回调)
+	cm.RegisterSectionChangeCallback("server", func(v *viper.Viper) error {
+		// Handle server configuration changes specifically
+		// (专门处理服务器配置变更)
+		log.Printf("Server configuration changed")
+		return nil
+	})
 
 
 	// Access configuration values (访问配置值)
@@ -111,5 +115,26 @@ Basic Usage:
 	// Application continues to run, configuration may be hot-reloaded in the background...
 	// (应用程序继续运行，配置可能会在后台热重载...)
 	// select {} // Block main goroutine to observe hot-reloading for testing
+
+Simple Configuration Loading (without hot-reload):
+(简单配置加载（不带热重载）：)
+
+For applications that don't need hot-reload functionality, you can use the simpler LoadConfig function:
+(对于不需要热重载功能的应用程序，您可以使用更简单的 LoadConfig 函数：)
+
+	var cfg MyConfig
+	err := config.LoadConfig(
+		&cfg,
+		config.WithConfigFile("config/app.yaml", ""),
+		config.WithEnvPrefix("APP"),
+		config.WithEnvVarOverride(true),
+	)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Configuration is now loaded and ready to use
+	// (配置现已加载并可以使用)
+	fmt.Printf("Server will run on %s:%d\n", cfg.Server.Host, cfg.Server.Port)
 */
 package config

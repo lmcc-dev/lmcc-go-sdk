@@ -8,7 +8,6 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 )
@@ -99,9 +99,17 @@ func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
 		if err != nil {
 			var configFileNotFoundError viper.ConfigFileNotFoundError
 			if errors.As(err, &configFileNotFoundError) || os.IsNotExist(err) {
-				log.Printf("Info: Config file '%s' not found...", cm.options.configFilePath)
+				// 文件未找到，也应该是一个错误，而不仅仅是日志
+				// (File not found should also be an error, not just a log)
+				return nil, lmccerrors.WithCode(
+					lmccerrors.Wrapf(err, "config file '%s' not found", cm.options.configFilePath),
+					lmccerrors.ErrConfigFileRead,
+				)
 			} else {
-				return nil, fmt.Errorf("failed to read config file '%s': %w", cm.options.configFilePath, err)
+				return nil, lmccerrors.WithCode(
+					lmccerrors.Wrapf(err, "failed to read config file '%s'", cm.options.configFilePath),
+					lmccerrors.ErrConfigFileRead,
+				)
 			}
 		} else {
 			configFileUsed = cm.options.configFilePath
@@ -113,7 +121,12 @@ func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
 
 	// 4. 从结构体标签设置 Viper 默认值 (Set Viper defaults from struct tags)
 	// Assuming setDefaultsFromTags is defined elsewhere (e.g., defaults.go)
-	setDefaultsFromTags(cm.v, cm.cfg, "")
+	if err := setDefaultsFromTags(cm.v, cm.cfg, ""); err != nil {
+		return nil, lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to set defaults from struct tags"),
+			lmccerrors.ErrConfigSetup,
+		)
+	}
 
 	// 5. 将 Viper 配置解组到结构体中 (Unmarshal the Viper config into the struct)
 	decoderConfig := &mapstructure.DecoderConfig{
@@ -128,16 +141,24 @@ func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
 	}
 	decoder, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create mapstructure decoder: %w", err)
+		return nil, lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to create mapstructure decoder"),
+			lmccerrors.ErrConfigSetup,
+		)
 	}
 	if err := decoder.Decode(cm.v.AllSettings()); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config from mapstructure: %w", err)
+		return nil, lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to unmarshal config from mapstructure"),
+			lmccerrors.ErrConfigSetup,
+		)
 	}
 
 	// 6. 在解码后应用默认值到零值字段 (Apply defaults to zero-value fields after decoding)
-	// Assuming applyDefaultsToZeroFields is defined elsewhere (e.g., defaults.go)
 	if err := applyDefaultsToZeroFields(cm.cfg); err != nil {
-		return nil, fmt.Errorf("failed to apply defaults to zero fields after initial load: %w", err)
+		return nil, lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to apply defaults to zero fields after initial load"),
+			lmccerrors.ErrConfigSetup,
+		)
 	}
 
 	// 7. 配置并启动监控（如果启用）(Configure and start watching if enabled)

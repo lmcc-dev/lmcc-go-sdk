@@ -35,9 +35,10 @@ func TestCtxFunctions(t *testing.T) {
 	opts.Level = zapcore.DebugLevel.String()
 	type customCtxKey string
 	const customKey customCtxKey = "custom_key"
-	opts.ContextKeys = []any{customKey}
+	opts.ContextKeys = []any{log.TraceIDKey, log.RequestIDKey, customKey}
 
-	logger := log.NewLogger(opts)
+	logger, errLogger := log.NewLogger(opts)
+	localRequire.NoError(errLogger)
 	localRequire.NotNil(logger)
 	defer func() { _ = logger.Sync() }()
 
@@ -106,7 +107,7 @@ func TestGlobalCtxFunctions(t *testing.T) {
 	opts.Level = zapcore.InfoLevel.String()
 	type globalCustomCtxKey string
 	const globalCustomKey globalCustomCtxKey = "global_custom_key"
-	opts.ContextKeys = []any{globalCustomKey}
+	opts.ContextKeys = []any{log.TraceIDKey, log.RequestIDKey, globalCustomKey}
 
 	log.Init(opts)
 	defer func() {
@@ -169,14 +170,13 @@ func TestGlobalCtxLevelFunctions(t *testing.T) {
 	opts := log.NewOptions()
 	opts.OutputPaths = []string{logFilePath}
 	opts.Format = log.FormatJSON
-	opts.Level = zapcore.DebugLevel.String() // Ensure all levels are logged
+	opts.Level = zapcore.DebugLevel.String()
 	type globalCtxLevelKey string
-	const ctxKeyForLevels globalCtxLevelKey = "ctx_level_key"
-	opts.ContextKeys = []any{ctxKeyForLevels}
+	const globalCtxLevelCustomKey globalCtxLevelKey = "ctx_level_key"
+	opts.ContextKeys = []any{log.TraceIDKey, log.RequestIDKey, globalCtxLevelCustomKey}
 
 	log.Init(opts)
 	defer func() {
-		// Restore global logger to a known default state
 		log.Init(log.NewOptions()) 
 		_ = log.Sync()
 	}()
@@ -188,7 +188,7 @@ func TestGlobalCtxLevelFunctions(t *testing.T) {
 	ctx := context.Background()
 	ctx = log.ContextWithTraceID(ctx, testTraceID)
 	ctx = log.ContextWithRequestID(ctx, testRequestID)
-	ctx = context.WithValue(ctx, ctxKeyForLevels, customLevelValue)
+	ctx = context.WithValue(ctx, globalCtxLevelCustomKey, customLevelValue)
 
 	// Test each level
 	log.CtxDebugf(ctx, "Global CtxDebugf message: %s", "debug_val")
@@ -250,7 +250,7 @@ func TestGlobalCtxLevelFunctions(t *testing.T) {
 		localAssert.Contains(line, fmt.Sprintf(`"L":"%s"`, expectedLevels[i]))
 		localAssert.Contains(line, fmt.Sprintf(`"trace_id":"%s"`, testTraceID))
 		localAssert.Contains(line, fmt.Sprintf(`"request_id":"%s"`, testRequestID))
-		localAssert.Contains(line, fmt.Sprintf(`"%s":"%s"`, string(ctxKeyForLevels), customLevelValue))
+		localAssert.Contains(line, fmt.Sprintf(`"%s":"%s"`, string(globalCtxLevelCustomKey), customLevelValue))
 		if expectedLevels[i] == "ERROR" || expectedLevels[i] == "PANIC" {
 			localAssert.Contains(line, `"stacktrace":`)
 		}

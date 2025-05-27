@@ -24,11 +24,14 @@ func TestNewOptions(t *testing.T) {
 		Level:                zapcore.InfoLevel.String(),
 		DisableCaller:        false,
 		DisableStacktrace:    false,
+		StacktraceLevel:      zapcore.ErrorLevel.String(),
 		Format:               log.FormatJSON,
 		EnableColor:          false,
 		Development:          false,
 		OutputPaths:          []string{"stdout"},
 		ErrorOutputPaths:     []string{"stderr"},
+		TimeFormat:           "",
+		EncoderConfig:        nil,
 		LogRotateMaxSize:     100, // Default: 100 MB
 		LogRotateMaxBackups:  5,   // Default: 5 backups
 		LogRotateMaxAge:      7,   // Default: 7 days

@@ -9,11 +9,13 @@ package log
 import (
 	"context"
 	"fmt"
-	"os" // Needed for os.Stdout, os.Stderr
+	"io"      //确保导入 io 包
+	"os"      // Needed for os.Stdout, os.Stderr
+	"strings" // Added for strings.Contains
 	"sync"
 	"sync/atomic" // Added for atomic.Pointer
 
-	merrors "github.com/marmotedu/errors" // 导入 marmotedu/errors 包 (Import marmotedu/errors package)
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors" // 导入 lmccerrors 包 (Import lmccerrors package)
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -73,6 +75,18 @@ type Logger interface {
 	// (Fatalw logs a message at FatalLevel with key-value pairs, then calls os.Exit(1).)
 	Fatalw(msg string, keysAndValues ...any)
 
+	// DPanic 使用 fmt.Sprint 风格记录一条 DPanic 级别的消息。
+	// 在开发模式下会 panic，在生产模式下则记录 Error 级别日志。
+	// (DPanic logs a message at DPanicLevel using fmt.Sprint style.)
+	// (It panics in development mode and logs at ErrorLevel in production.)
+	DPanic(args ...any)
+	// DPanicf 使用 fmt.Sprintf 风格记录一条 DPanic 级别的消息。
+	// (DPanicf logs a message at DPanicLevel using fmt.Sprintf style.)
+	DPanicf(template string, args ...any)
+	// DPanicw 记录一条 DPanic 级别的消息，并附带键值对。
+	// (DPanicw logs a message at DPanicLevel with key-value pairs.)
+	DPanicw(msg string, keysAndValues ...any)
+
 	// Ctx 使用 fmt.Sprint 风格记录一条 Info 级别的消息，并从 context 中提取字段。
 	// (Ctx logs a message at InfoLevel using fmt.Sprint style, extracting fields from the context.)
 	Ctx(ctx context.Context, args ...any)
@@ -129,8 +143,16 @@ type logger struct {
 	opts      *Options // Store applied options
 }
 
+// keyValueLogger 是一个包装器，用于在 key=value 格式下处理 WithValues
+// (keyValueLogger is a wrapper for handling WithValues in key=value format)
+type keyValueLogger struct {
+	baseLogger *logger
+	fields     []any
+}
+
 // 确保 logger 实现了 Logger 接口。
 var _ Logger = (*logger)(nil)
+var _ Logger = (*keyValueLogger)(nil)
 
 // FormatJSON/FormatText are defined in options.go
 
@@ -148,29 +170,41 @@ var (
 
 // Init 使用给定的选项初始化全局日志记录器 std。
 // 此函数是线程安全的。如果 std 已经初始化，它将被新的配置原子地覆盖。
+// 如果初始化失败，它将 panic。
 // (Init initializes the global logger std with the given options.)
 // (This function is thread-safe. If std is already initialized, it will be atomically overwritten with the new configuration.)
+// (If initialization fails, it will panic.)
 func Init(opts *Options) {
-	// newLogger 是内部构造函数，确保它处理 opts 为 nil 的情况或返回错误
-	// (newLogger is the internal constructor, ensure it handles nil opts or returns an error if appropriate)
-	// 假设 newLogger 总是返回一个有效的 logger 或 panic (如果 opts 无效)
-	// (Assuming newLogger always returns a valid logger or panics if opts are invalid)
-	l := newLogger(opts) 
+	l, err := newLogger(opts)
+	if err != nil {
+		// 对于 Init 失败，我们选择 panic，因为日志系统是基础组件。
+		// (For Init failure, we choose to panic as the logging system is a fundamental component.)
+		panic(lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to initialize global logger with provided options"),
+			lmccerrors.ErrLogInitialization,
+		))
+	}
 	std.Store(l)
 }
 
 // NewLogger 根据提供的选项创建一个新的 Logger 实例。
 // (NewLogger creates a new Logger instance based on the provided options.)
-func NewLogger(opts *Options) Logger {
-	return newLogger(opts) // Calls the internal constructor
+func NewLogger(opts *Options) (Logger, error) {
+	l, err := newLogger(opts)
+	if err != nil {
+		return nil, err // 直接返回 newLogger 的错误 (Directly return error from newLogger)
+	}
+	return l, nil
 }
 
 // Std 返回全局的 Logger 实例。
 // 如果 std 未初始化，它将使用默认选项进行初始化。
 // 此函数通过双重检查锁定和原子操作确保线程安全。
+// 如果在首次延迟初始化期间发生错误，它将 panic。
 // (Std returns the global Logger instance.)
 // (If std is not initialized, it will be initialized with default options.)
 // (This function ensures thread-safety through double-checked locking and atomic operations.)
+// (If an error occurs during the first lazy initialization, it will panic.)
 func Std() Logger {
 	l := std.Load()
 	if l == nil {
@@ -180,7 +214,15 @@ func Std() Logger {
 		// (再次检查，以防在我们等待锁的时候，另一个 goroutine 已经初始化了它)
 		l = std.Load()
 		if l == nil {
-			l = newLogger(NewOptions()) // Use default options if not initialized
+			var err error
+			l, err = newLogger(NewOptions()) // Use default options if not initialized
+			if err != nil {
+				// 首次默认初始化失败，panic (First default initialization failed, panic)
+				panic(lmccerrors.WithCode(
+					lmccerrors.Wrap(err, "failed to initialize global logger with default options"),
+					lmccerrors.ErrLogInitialization,
+				))
+			}
 			std.Store(l)
 		}
 	}
@@ -199,558 +241,1218 @@ func Std() Logger {
 //          (Returns an error if newOpts is nil. May also return an error if creating the new logger instance fails (e.g., invalid options).)
 func ReconfigureGlobalLogger(newOpts *Options) error {
 	if newOpts == nil {
-		// 使用 merrors.New 创建错误，以包含堆栈跟踪。
-		// (Use merrors.New to create an error with a stack trace.)
-		return merrors.New("cannot reconfigure global logger with nil options")
+		// 使用 lmccerrors.NewWithCode 创建错误。
+		// (Use lmccerrors.NewWithCode to create an error.)
+		return lmccerrors.NewWithCode(lmccerrors.ErrLogOptionInvalid, "cannot reconfigure global logger with nil options")
 	}
-	// 假设 newLogger 会对 newOpts 进行校验，如果选项无效可能会 panic 或返回可区分的错误
-	// (Assuming newLogger validates newOpts and might panic or return a distinguishable error for invalid options)
-	// 为了简单起见，这里我们只创建新的 logger。如果 newLogger 可以返回错误，则应处理该错误。
-	// (For simplicity, we just create the new logger here. If newLogger could return an error, it should be handled.)
-	newL := newLogger(newOpts) // Use the internal constructor
+
+	newL, err := newLogger(newOpts)
+	if err != nil {
+		// 将 newLogger 返回的错误包装，以提供重新配置的上下文
+		// (Wrap the error returned by newLogger to provide reconfiguration context)
+		// 确保 %w 用于正确的错误链包装 (Ensure %w is used for correct error chain wrapping)
+		return lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to create new logger for reconfiguration"),
+			lmccerrors.ErrLogReconfigure,
+		)
+	}
 	std.Store(newL)
-	return nil // 假设 newLogger 成功或 panic
+	return nil
+}
+
+// --- DPanic 系列方法实现 ---
+// (DPanic series method implementation)
+func (l *logger) DPanic(args ...any) {
+	if l.opts.Development {
+		l.zapLogger.Sugar().DPanic(args...)
+	} else {
+		l.zapLogger.Sugar().Error(args...)
+	}
+}
+func (l *logger) DPanicf(template string, args ...any) {
+	if l.opts.Development {
+		l.zapLogger.Sugar().DPanicf(template, args...)
+	} else {
+		l.zapLogger.Sugar().Errorf(template, args...)
+	}
+}
+func (l *logger) DPanicw(msg string, keysAndValues ...any) {
+	if l.opts.Development {
+		l.zapLogger.Sugar().DPanicw(msg, keysAndValues...)
+	} else {
+		l.zapLogger.Sugar().Errorw(msg, keysAndValues...)
+	}
+}
+
+// --- 全局 DPanic 系列函数 ---
+// DPanic 在全局 logger 上调用 DPanic。
+// (DPanic calls DPanic on the global logger.)
+func DPanic(args ...any) {
+	Std().DPanic(args...)
+}
+
+// DPanicf 在全局 logger 上调用 DPanicf。
+// (DPanicf calls DPanicf on the global logger.)
+func DPanicf(template string, args ...any) {
+	Std().DPanicf(template, args...)
+}
+
+// DPanicw 在全局 logger 上调用 DPanicw。
+// (DPanicw calls DPanicw on the global logger.)
+func DPanicw(msg string, keysAndValues ...any) {
+	Std().DPanicw(msg, keysAndValues...)
+}
+
+// getEncoderConfig 根据选项创建并返回一个 zapcore.EncoderConfig。
+// (getEncoderConfig creates and returns a zapcore.EncoderConfig based on the options.)
+func getEncoderConfig(opts *Options) zapcore.EncoderConfig {
+	// 如果用户提供了自定义的 EncoderConfig，则直接使用它。
+	// (If the user provided a custom EncoderConfig, use it directly.)
+	if opts.EncoderConfig != nil {
+		return *opts.EncoderConfig
+	}
+
+	// 根据格式和测试的期望，定制 EncoderConfig
+	// (Customize EncoderConfig based on format and test expectations)
+	var encoderConfig zapcore.EncoderConfig
+	
+	if opts.Format == FormatText || opts.Format == FormatKeyValue {
+		// 对于文本格式和 key=value 格式，使用开发配置作为基础
+		// (For text format and key=value format, use development config as base)
+		encoderConfig = zap.NewDevelopmentEncoderConfig()
+		// 覆盖一些字段以匹配测试期望
+		// (Override some fields to match test expectations)
+		encoderConfig.LevelKey = "L"
+		encoderConfig.CallerKey = "C"
+		encoderConfig.MessageKey = "M"
+		encoderConfig.NameKey = "N"
+	} else {
+		// 对于 JSON 格式，使用生产配置
+		// (For JSON format, use production config)
+		encoderConfig = zap.NewProductionEncoderConfig()
+		encoderConfig.LevelKey = "L"
+		encoderConfig.CallerKey = "C"
+		encoderConfig.MessageKey = "M"
+		encoderConfig.NameKey = "N"
+	}
+
+	// 根据格式和颜色选项设置 LevelEncoder
+	// (Set LevelEncoder based on format and color options)
+	if opts.Format == FormatText || opts.Format == FormatKeyValue {
+		if opts.EnableColor {
+			encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder // 文本格式且启用颜色时，使用大写带颜色的 LevelEncoder (For text format with color enabled, use capital color LevelEncoder)
+		} else {
+			encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder // 文本格式但不启用颜色时，使用大写 LevelEncoder (For text format without color, use capital LevelEncoder)
+		}
+	} else { // 默认为 JSON 格式或其他格式 (Default to JSON format or other formats)
+		encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder // JSON 格式使用大写 LevelEncoder (For JSON format, use capital LevelEncoder)
+	}
+
+	// 时间编码器 (Time encoder)
+	if opts.TimeFormat != "" {
+		encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout(opts.TimeFormat)
+	} else {
+		// 默认为 ISO8601 格式，与 zap.NewDevelopmentEncoderConfig() 和当前测试输出一致
+		// (Default to ISO8601 format, consistent with zap.NewDevelopmentEncoderConfig() and current test output)
+		encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	}
+
+	// 调用者编码器 (Caller encoder)
+	if !opts.DisableCaller {
+		encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder // 启用调用者信息时，使用短路径编码器 (When caller info is enabled, use short path encoder)
+	} else {
+		encoderConfig.EncodeCaller = nil // 明确禁用调用者信息 (Explicitly disable caller info)
+	}
+
+	return encoderConfig
+}
+
+// newLoggerInternal 是创建 zap.Logger 的核心逻辑，可被 NewLogger 和 NewLoggerWithWriter 复用。
+// 它接收 Options 和一个已经构建好的 zapcore.WriteSyncer。
+func newLoggerInternal(opts *Options, syncer zapcore.WriteSyncer) (*zap.Logger, *zap.AtomicLevel, error) {
+	if opts == nil {
+		return nil, nil, lmccerrors.NewWithCode(lmccerrors.ErrLogOptionInvalid, "options cannot be nil for newLoggerInternal")
+	}
+
+	// 验证选项 (Validate options first)
+	if validationErrs := opts.Validate(); len(validationErrs) > 0 {
+		// 将多个验证错误合并为一个 (Combine multiple validation errors into one)
+		// 这里简单地取第一个错误，或者可以构造一个更复杂的错误消息
+		// (Here, simply take the first error, or a more complex error message can be constructed)
+		return nil, nil, lmccerrors.ErrorfWithCode(lmccerrors.ErrLogOptionInvalid, "invalid options: %v", validationErrs)
+	}
+
+	var zapLevel zapcore.Level
+	if err := zapLevel.UnmarshalText([]byte(opts.Level)); err != nil {
+		return nil, nil, lmccerrors.WithCode(
+			lmccerrors.Wrapf(err, "invalid log level '%s'", opts.Level),
+			lmccerrors.ErrLogOptionInvalid,
+		)
+	}
+	atomicLevel := zap.NewAtomicLevelAt(zapLevel)
+
+	encoderConfig := getEncoderConfig(opts) // 使用修正后的 getEncoderConfig
+	var encoder zapcore.Encoder
+	if opts.Format == FormatJSON {
+		encoder = zapcore.NewJSONEncoder(encoderConfig)
+	} else if opts.Format == FormatText || opts.Format == FormatKeyValue {
+		encoder = zapcore.NewConsoleEncoder(encoderConfig)
+	} else {
+		// Validate() 应该已经捕获了这个问题，但作为防御性检查
+		// (Validate() should have caught this, but as a defensive check)
+		return nil, nil, lmccerrors.ErrorfWithCode(lmccerrors.ErrLogOptionInvalid, "invalid log format: %s", opts.Format)
+	}
+
+	core := zapcore.NewCore(encoder, syncer, atomicLevel)
+
+	var zapOpts []zap.Option
+	if !opts.DisableCaller { // 使用 !opts.DisableCaller
+		zapOpts = append(zapOpts, zap.AddCaller(), zap.AddCallerSkip(1)) // Skip our wrapper method
+	}
+
+	if opts.Development {
+		zapOpts = append(zapOpts, zap.Development())
+	}
+
+	if !opts.DisableStacktrace {
+		var stacktraceLevel zapcore.Level
+		if err := stacktraceLevel.UnmarshalText([]byte(opts.StacktraceLevel)); err != nil {
+			// 如果 StacktraceLevel 无效，则默认为 ErrorLevel 并记录一个内部警告
+			// (If StacktraceLevel is invalid, default to ErrorLevel and log an internal warning)
+			// 注意：这里不能使用全局 logger，因为它可能尚未初始化
+			// (Note: Cannot use global logger here as it might not be initialized yet)
+			fmt.Fprintf(os.Stderr, "Warning: Invalid StacktraceLevel '%s', defaulting to ErrorLevel. Error: %v\\n", opts.StacktraceLevel, err)
+			stacktraceLevel = zapcore.ErrorLevel
+		}
+		zapOpts = append(zapOpts, zap.AddStacktrace(stacktraceLevel))
+	}
+
+	// Options 结构体中没有 ZapOptions 字段，移除相关代码
+	// if len(opts.ZapOptions) > 0 {
+	// zapOpts = append(zapOpts, opts.ZapOptions...)
+	// }
+
+	zapL := zap.New(core, zapOpts...)
+	return zapL, &atomicLevel, nil
 }
 
 // newLogger 是 logger 的内部构造函数。
 // (newLogger is the internal constructor for a logger.)
-// 它接收 Options 并返回一个配置好的 *logger 实例。
-// (It takes Options and returns a configured *logger instance.)
-// 注意：这个函数现在返回 *logger 而不是 Logger 接口，以配合 atomic.Pointer[logger]。
-// (Note: This function now returns *logger instead of the Logger interface to work with atomic.Pointer[logger].)
-func newLogger(opts *Options) *logger { // Changed return type to *logger
+// 它接收 Options 并返回一个配置好的 *logger 实例或错误。
+// (It takes Options and returns a configured *logger instance or an error.)
+// 注意：这个函数现在返回 (*logger, error) 以便更好地处理错误。
+// (Note: This function now returns (*logger, error) for better error handling.)
+func newLogger(opts *Options) (*logger, error) { // Changed return type to (*logger, error)
 	if opts == nil {
 		opts = NewOptions() // 使用默认选项，如果提供的是 nil (Use default options if nil is provided)
 	}
 
-	// 将日志级别字符串转换为 zapcore.Level
-	// (Convert log level string to zapcore.Level)
-	var zapLevel zapcore.Level
-	if err := zapLevel.UnmarshalText([]byte(opts.Level)); err != nil {
-		zapLevel = zapcore.InfoLevel // Default level
-	}
-
-	// 配置编码器 (Configure encoder)
-	encoderConfig := zapcore.EncoderConfig{
-		MessageKey:     "message",
-		LevelKey:       "level",
-		TimeKey:        "timestamp",
-		NameKey:        "logger", // NameKey is "logger", will be used if logger has a name
-		CallerKey:      "caller",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder, // Default for console
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
-		EncodeName:     zapcore.FullNameEncoder, // Ensures the full name is encoded if present
-	}
-
-	var encoder zapcore.Encoder
-	if opts.Format == FormatText {
-		if opts.EnableColor {
-			encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder // Colored level for text
-		}
-		encoder = zapcore.NewConsoleEncoder(encoderConfig)
-	} else if opts.Format == FormatJSON {
-		encoderConfig.LevelKey = "L" // Use "L" for level in JSON as per common practice
-		encoderConfig.TimeKey = "T"
-		encoderConfig.MessageKey = "M"
-		encoderConfig.CallerKey = "C"
-		encoderConfig.NameKey = "N" // Use "N" for name in JSON
-		encoder = zapcore.NewJSONEncoder(encoderConfig)
-	} else {
-		// Fallback to JSON encoder if format is unknown
-		// (如果格式未知，则回退到 JSON 编码器)
-		encoderConfig.LevelKey = "L"
-		encoderConfig.TimeKey = "T"
-		encoderConfig.MessageKey = "M"
-		encoderConfig.CallerKey = "C"
-		encoderConfig.NameKey = "N"
-		encoder = zapcore.NewJSONEncoder(encoderConfig)
-		// Optionally log a warning that an unknown format was specified
-		// (可以选择性地记录一个警告，说明指定了未知格式)
-		// fmt.Fprintf(os.Stderr, "Unknown log format \\"%s\\", defaulting to JSON\\n", opts.Format)
-	}
-
-	// 获取写入器 (Get writer syncer)
-	writeSyncer, err := getWriteSyncer(opts)
+	// 获取写入同步器 (Get write syncer)
+	writeSyncer, err := getWriteSyncer(opts) // getWriteSyncer will handle OutputPaths
 	if err != nil {
-		// 如果获取写入器失败，打印错误到 stderr 并 panic
-		// (If getting writer syncer fails, print error to stderr and panic)
-		// This is a critical failure, as logging cannot proceed.
-		// (这是一个严重错误，因为日志记录无法继续。)
-		fmt.Fprintf(os.Stderr, "Failed to get write syncer: %v\\n", err)
-		panic(fmt.Sprintf("Failed to get write syncer: %v", err))
+		// 返回带有上下文的错误，而不是 panic (Return an error with context instead of panic)
+		// 确保返回的错误是 ErrLogInitialization 类型 (Ensure the returned error is of type ErrLogInitialization)
+		return nil, lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to get write syncer for logger"),
+			lmccerrors.ErrLogInitialization,
+		)
 	}
 
-	core := zapcore.NewCore(encoder, writeSyncer, zapLevel)
-
-	zapOptions := []zap.Option{
-		zap.AddCaller(), // 总是添加调用者信息 (Always add caller info)
-		// 根据 opts.DisableStacktrace 来决定是否添加 zap 自己的堆栈跟踪
-		// (Decide whether to add zap's own stack trace based on opts.DisableStacktrace)
-		// 注意：这与 marmotedu/errors 的 errorVerbose 堆栈是分开的
-		// (Note: This is separate from marmotedu/errors' errorVerbose stack)
-		// 如果 opts.DisableStacktrace 为 true，我们不希望 zap 自动添加堆栈
-		// (If opts.DisableStacktrace is true, we don't want zap to add stack traces automatically)
-	}
-	if !opts.DisableStacktrace {
-		zapOptions = append(zapOptions, zap.AddStacktrace(zapcore.ErrorLevel)) // ErrorLevel 及以上级别日志会自动附加堆栈跟踪 (ErrorLevel and above will automatically attach stack traces)
+	zapL, _, err := newLoggerInternal(opts, writeSyncer) // Use newLoggerInternal
+	if err != nil {
+		// 如果 newLoggerInternal 返回错误，则将其包装并返回
+		// (If newLoggerInternal returns an error, wrap and return it)
+		return nil, lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to create new zap logger"),
+			lmccerrors.ErrLogInitialization,
+		)
 	}
 
-	// 如果 Development 模式开启，配置特定的开发日志选项
-	// (If Development mode is on, configure specific development logging options)
-	if opts.Development {
-		// Development 该选项会更改 DPanic 日志的行为，使其在开发模式下 panic
-		// (The Development option changes the behavior of DPanic logs to panic in development mode)
-		zapOptions = append(zapOptions, zap.Development())
+	// 返回包装后的 logger (Return the wrapped logger)
+	return &logger{
+		zapLogger: zapL,
+		opts:      opts, // 存储应用的选项 (Store applied options)
+	}, nil
+}
+
+// NewLoggerWithWriter 创建一个新的 Logger 实例，将其输出写入提供的 io.Writer。
+// 主要用于测试目的。
+// (NewLoggerWithWriter creates a new Logger instance that writes its output to the provided io.Writer.)
+// (This is primarily intended for testing purposes.)
+func NewLoggerWithWriter(opts *Options, writer io.Writer) Logger {
+	if opts == nil {
+		opts = NewOptions() // 使用默认选项 (Use default options)
 	}
 
-	// 为了让 "caller" 字段显示应用代码的调用位置，而不是 pkg/log 内部的位置
-	// For the "caller" field to show the call site in application code, not within pkg/log
-	// 需要跳过 sdklog 本身的封装层。通常是2层 (e.g., Debug -> sugar.Debug -> ...)
-	// We need to skip sdklog's own wrapper layers. Usually 2 levels (e.g., Debug -> sugar.Debug -> ...)
-	// 如果你的全局函数 (如 log.Info) 直接调用 logger 实例的方法 (如 l.Info),
-	// 而实例方法又直接调用 zapLogger.Sugar().Info(), 那么从应用代码到 zap 核心是2层。
-	// 实际跳过的层级可能需要根据具体调用链调整。
-	// If your global functions (like log.Info) directly call logger instance methods (like l.Info),
-	// and instance methods directly call zapLogger.Sugar().Info(), then it's 2 levels from app code to zap core.
-	// The actual number of skipped levels might need adjustment based on the specific call chain.
-	zapOptions = append(zapOptions, zap.AddCallerSkip(1)) // 先尝试跳过1层，通常是 sugar 封装。如果还不够，可以调整为2。
+	// 直接使用传入的 writer 创建 WriteSyncer
+	writeSyncer := zapcore.AddSync(writer)
 
-
-	finalLogger := zap.New(core, zapOptions...)
-
-	// 如果 opts.Name 非空，则为 logger 设置名称
-	// (If opts.Name is not empty, set the name for the logger)
-	if opts.Name != "" {
-		finalLogger = finalLogger.Named(opts.Name)
+	zapL, _, err := newLoggerInternal(opts, writeSyncer) // Use newLoggerInternal
+	if err != nil {
+		// 这种情况理论上不应该发生，因为我们控制了 writer 且 newLoggerInternal 内部处理了其他选项错误
+		// 但如果 newLoggerInternal 的其他部分失败了
+		panic(lmccerrors.WithCode(
+			lmccerrors.Wrap(err, "failed to create logger with writer"),
+			lmccerrors.ErrLogInitialization,
+		))
 	}
 
 	return &logger{
-		zapLogger: finalLogger,
-		opts:      opts, // Store the applied options
+		zapLogger: zapL,
+		opts:      opts,
 	}
 }
 
-// getWriteSyncer 根据选项创建 zapcore.WriteSyncer
-// (getWriteSyncer creates a zapcore.WriteSyncer based on the options)
+// GetGlobalLogger 返回全局的 Logger 实例。Std() 的别名。
+// (GetGlobalLogger returns the global Logger instance. Alias for Std().)
+func GetGlobalLogger() Logger {
+	return Std()
+}
+
+// SetGlobalLogger 设置全局的 Logger 实例。
+// 注意：这会直接替换全局 logger，主要用于测试。
+// (SetGlobalLogger sets the global Logger instance.)
+// (Note: This directly replaces the global logger, primarily for testing.)
+func SetGlobalLogger(l Logger) {
+	if l == nil {
+		// 不允许设置 nil logger，重新初始化为默认值
+		// (Cannot set nil logger, reinitialize to default)
+		Init(NewOptions())
+		return
+	}
+	internalLog, ok := l.(*logger)
+	if !ok {
+		// 如果传入的不是 *logger 类型，这是一个 API 使用错误，应该 panic。
+		// (If the passed type is not *logger, it's an API usage error and should panic.)
+		panic(fmt.Sprintf("SetGlobalLogger: incompatible logger type %T, expected *logger created by this package", l))
+	}
+	std.Store(internalLog)
+}
+
+// getWriteSyncer 根据提供的选项确定并返回一个 zapcore.WriteSyncer。
+//它可以配置为写入标准输出、标准错误或一个或多个文件。
+// (getWriteSyncer determines and returns a zapcore.WriteSyncer based on the provided options.)
+// (It can be configured to write to stdout, stderr, or one or more files.)
 func getWriteSyncer(opts *Options) (zapcore.WriteSyncer, error) {
-	var syncers []zapcore.WriteSyncer
-
 	if len(opts.OutputPaths) == 0 {
-		// 如果 OutputPaths 为空，则默认为 stdout
-		// (Default to stdout if OutputPaths is empty)
-		opts.OutputPaths = []string{"stdout"}
+		// 如果没有指定输出路径，则默认为 stdout (Default to stdout if no output paths are specified)
+		// 但通常 NewOptions 会设置默认值，所以这里更多是防御性编程
+		// (But usually NewOptions sets defaults, so this is more defensive)
+		return zapcore.AddSync(os.Stdout), nil
 	}
-
-	for _, path := range opts.OutputPaths {
-		var syncer zapcore.WriteSyncer
-		var err error // Declare err here to catch error from newRotateLogger
-		switch path {
-		case "stdout":
-			syncer = zapcore.Lock(os.Stdout)
-		case "stderr":
-			syncer = zapcore.Lock(os.Stderr)
-		default:
-			// 视为文件路径，调用 rotation.go 中的 newRotateLogger
-			// (Treat as file path, call newRotateLogger from rotation.go)
-			syncer, err = newRotateLogger(path, opts) // Call the refactored function
-			if err != nil {
-				// 如果创建轮转日志失败，返回错误以便 NewLogger 处理
-				// (If creating rotated log fails, return error for NewLogger to handle)
-				// 使用 merrors.Wrapf 包装错误，以添加堆栈跟踪和上下文。
-				// (Wrap the error with merrors.Wrapf to add stack trace and context.)
-				return nil, merrors.Wrapf(err, "failed to create rotating logger for path %s", path)
-			}
-		}
-		syncers = append(syncers, syncer)
-	}
-
-	if len(syncers) == 0 {
-		// 理论上不应该发生，因为前面有默认 stdout 处理，但作为防御性编程
-		// (Shouldn't happen due to default stdout, but defensive programming)
-		return zapcore.Lock(os.Stdout), nil // Return stdout syncer as a safe default
-	}
-
-	// 合并所有 syncers
-	// (Combine all syncers)
-	return zapcore.NewMultiWriteSyncer(syncers...), nil
+	return getWriteSyncerForPaths(opts.OutputPaths, opts)
 }
 
-// getWriteSyncerForPaths is a helper specifically for creating a combined syncer for a given list of paths.
-// It's used by NewLogger to handle ErrorOutputPaths separately.
+// getWriteSyncerForPaths 为给定的路径列表创建一个 zapcore.WriteSyncer。
+// 支持 "stdout", "stderr" 以及文件路径。
+// (getWriteSyncerForPaths creates a zapcore.WriteSyncer for the given list of paths.)
+// (Supports "stdout", "stderr", and file paths.)
 func getWriteSyncerForPaths(paths []string, opts *Options) (zapcore.WriteSyncer, error) {
-	if len(paths) == 0 {
-		// 使用 merrors.New 创建错误，以包含堆栈跟踪。
-		// (Use merrors.New to create an error with a stack trace.)
-		return nil, merrors.New("no paths provided to getWriteSyncerForPaths")
-	}
-	syncers := make([]zapcore.WriteSyncer, 0, len(paths))
+	var writers []zapcore.WriteSyncer
 	for _, path := range paths {
-		var syncer zapcore.WriteSyncer
-		var err error
-		switch path {
+		var ws zapcore.WriteSyncer
+		// var err error // err is declared within the loop for file opening specifically
+		switch strings.ToLower(path) {
 		case "stdout":
-			syncer = zapcore.Lock(os.Stdout)
+			ws = zapcore.AddSync(os.Stdout)
 		case "stderr":
-			syncer = zapcore.Lock(os.Stderr)
+			ws = zapcore.AddSync(os.Stderr)
 		default:
-			syncer, err = newRotateLogger(path, opts)
-			if err != nil {
-				// 使用 merrors.Wrapf 包装错误，以添加堆栈跟踪和上下文。
-				// (Wrap the error with merrors.Wrapf to add stack trace and context.)
-				return nil, merrors.Wrapf(err, "failed to create rotating logger for path %s", path)
+			// 文件路径处理，包括轮转
+			// (File path handling, including rotation)
+			// Also handle cases like "http://", "tcp://", etc. as invalid file paths
+			if strings.Contains(path, "://") {
+				return nil, lmccerrors.NewWithCode(lmccerrors.ErrLogOptionInvalid, "unsupported output path scheme: "+path)
+			}
+
+			if opts.LogRotateMaxSize > 0 { // 使用 LogRotateMaxSize 判断是否启用轮转
+				// 使用 newRotateLogger 函数，它包含了目录创建和错误处理逻辑
+				// (Use newRotateLogger function which includes directory creation and error handling logic)
+				var err error
+				ws, err = newRotateLogger(path, opts)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				// 普通文件写入 (Regular file writing)
+				file, errOpen := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+				if errOpen != nil {
+					return nil, lmccerrors.WithCode(
+						lmccerrors.Wrapf(errOpen, "failed to open log file %s", path),
+						lmccerrors.ErrLogInitialization,
+					)
+				}
+				ws = zapcore.AddSync(file)
 			}
 		}
-		syncers = append(syncers, syncer)
+		// if err != nil { // This err check is problematic if err is not properly assigned in all paths within default
+		// return nil, err
+		// }
+		if ws != nil {
+			writers = append(writers, ws)
+		}
 	}
 
-	if len(syncers) == 1 {
-		return syncers[0], nil
+	if len(writers) == 0 {
+		// This case should ideally be caught by opts.Validate() if OutputPaths becomes empty after processing
+		// or if all paths are invalid but don't immediately error out above.
+		// However, if paths contained only invalid schemes that returned early, writers could be empty.
+		return nil, lmccerrors.NewWithCode(lmccerrors.ErrLogOptionInvalid, "no valid log output writers configured from paths")
 	}
-	return zapcore.NewMultiWriteSyncer(syncers...), nil
+	return zapcore.NewMultiWriteSyncer(writers...), nil
 }
 
-// --- Logger interface method implementations ---
+// 以下是原有的 logger 方法和全局包装函数，保持不变
+// ... (Debug, Debugf, Debugw methods for *logger) ...
+// ... (Info, Infof, Infow methods for *logger) ...
+// ... (Warn, Warnf, Warnw methods for *logger) ...
+// ... (Error, Errorf, Errorw methods for *logger) ...
+// ... (Fatal, Fatalf, Fatalw methods for *logger) ...
+// ... (Ctx, Ctxf, Ctxw methods for *logger) ...
+// ... (Sync, WithValues, WithName, GetZapLogger methods for *logger) ...
+// ... (CtxDebugf, CtxInfof, etc. methods for *logger) ...
 
-// Debug logs a message at DebugLevel using fmt.Sprint style.
-func (l *logger) Debug(args ...any) { l.zapLogger.Sugar().Debug(args...) }
-
-// Debugf logs a message at DebugLevel using fmt.Sprintf style.
-func (l *logger) Debugf(template string, args ...any) { l.zapLogger.Sugar().Debugf(template, args...) }
-
-// Debugw logs a message at DebugLevel with key-value pairs.
-func (l *logger) Debugw(msg string, keysAndValues ...any) {
-	l.zapLogger.Sugar().Debugw(msg, keysAndValues...)
-}
-
-// Info logs a message at InfoLevel using fmt.Sprint style.
-func (l *logger) Info(args ...any) { l.zapLogger.Sugar().Info(args...) }
-
-// Infof logs a message at InfoLevel using fmt.Sprintf style.
-func (l *logger) Infof(template string, args ...any) { l.zapLogger.Sugar().Infof(template, args...) }
-
-// Infow logs a message at InfoLevel with key-value pairs.
-func (l *logger) Infow(msg string, keysAndValues ...any) {
-	l.zapLogger.Sugar().Infow(msg, keysAndValues...)
-}
-
-// Warn logs a message at WarnLevel using fmt.Sprint style.
-func (l *logger) Warn(args ...any) { l.zapLogger.Sugar().Warn(args...) }
-
-// Warnf logs a message at WarnLevel using fmt.Sprintf style.
-func (l *logger) Warnf(template string, args ...any) { l.zapLogger.Sugar().Warnf(template, args...) }
-
-// Warnw logs a message at WarnLevel with key-value pairs.
-func (l *logger) Warnw(msg string, keysAndValues ...any) {
-	l.zapLogger.Sugar().Warnw(msg, keysAndValues...)
-}
-
-// Error logs a message at ErrorLevel using fmt.Sprint style.
-func (l *logger) Error(args ...any) { l.zapLogger.Sugar().Error(args...) }
-
-// Errorf logs a message at ErrorLevel using fmt.Sprintf style.
-func (l *logger) Errorf(template string, args ...any) { l.zapLogger.Sugar().Errorf(template, args...) }
-
-// Errorw logs a message at ErrorLevel with key-value pairs.
-func (l *logger) Errorw(msg string, keysAndValues ...any) {
-	l.zapLogger.Sugar().Errorw(msg, keysAndValues...)
-}
-
-// Fatal logs a message at FatalLevel using fmt.Sprint style, then calls os.Exit(1).
-func (l *logger) Fatal(args ...any) { l.zapLogger.Sugar().Fatal(args...) } // Note: Fatal calls os.Exit
-
-// Fatalf logs a message at FatalLevel using fmt.Sprintf style, then calls os.Exit(1).
-func (l *logger) Fatalf(template string, args ...any) { l.zapLogger.Sugar().Fatalf(template, args...) } // Note: Fatal calls os.Exit
-
-// Fatalw logs a message at FatalLevel with key-value pairs, then calls os.Exit(1).
-func (l *logger) Fatalw(msg string, keysAndValues ...any) {
-	l.zapLogger.Sugar().Fatalw(msg, keysAndValues...) // Note: Fatal calls os.Exit
-}
-
-// Ctx logs a message at InfoLevel using fmt.Sprint style, extracting fields from the context.
-func (l *logger) Ctx(ctx context.Context, args ...any) {
-	if l.zapLogger.Level() <= zapcore.InfoLevel {
-		fields := extractContextFields(ctx, l.opts.ContextKeys)
-		l.zapLogger.With(fields...).Sugar().Info(args...)
-	}
-}
-
-// Ctxf logs a message at InfoLevel using fmt.Sprintf style, extracting fields from the context.
-func (l *logger) Ctxf(ctx context.Context, template string, args ...any) {
-	if l.zapLogger.Level() <= zapcore.InfoLevel {
-		fields := extractContextFields(ctx, l.opts.ContextKeys)
-		l.zapLogger.With(fields...).Sugar().Infof(template, args...)
-	}
-}
-
-// Ctxw logs a message at InfoLevel with key-value pairs, also extracting fields from the context.
-func (l *logger) Ctxw(ctx context.Context, msg string, keysAndValues ...any) {
-	if l.zapLogger.Level() <= zapcore.InfoLevel {
-		fields := extractContextFields(ctx, l.opts.ContextKeys)
-		l.zapLogger.With(fields...).Sugar().Infow(msg, keysAndValues...)
-	}
-}
-
-// Sync flushes any buffered log entries to the underlying writers.
-func (l *logger) Sync() error { return l.zapLogger.Sync() }
-
-// WithValues adds a set of key-value pairs context to the logger.
-// It returns a new Logger instance with the added context.
-func (l *logger) WithValues(keysAndValues ...any) Logger {
-	newZapLogger := l.zapLogger.Sugar().With(keysAndValues...).Desugar()
-	return &logger{
-		zapLogger: newZapLogger,
-		opts:      l.opts, // Inherit options
-	}
-}
-
-// WithName adds a new element to the logger's name.
-// It returns a new Logger instance with the extended name.
-func (l *logger) WithName(name string) Logger {
-	newZapLogger := l.zapLogger.Named(name)
-	return &logger{
-		zapLogger: newZapLogger,
-		opts:      l.opts, // Inherit options
-	}
-}
-
-// GetZapLogger returns the underlying zap.Logger.
-// This might be useful for advanced integration or testing.
-func (l *logger) GetZapLogger() *zap.Logger {
-	return l.zapLogger
-}
-
-// --- Global convenience functions ---
-
-// Sync flushes the global logger.
+// ... (Global Debug, Info, Warn, Error, Fatal functions) ...
+// ... (Global Ctx, Ctxf, Ctxw functions) ...
+// ... (Global WithValues, WithName functions) ...
+// ... (Global Sync function if it was separate, or rely on Std().Sync()) ...
+// Global Sync function
 func Sync() error {
 	return Std().Sync()
 }
 
-// Debug logs a message at DebugLevel using the global logger.
+// --- Global Logging Functions ---
+// (全局日志记录函数)
+
+// Debug 在全局 logger 上调用 Debug。
+// (Debug calls Debug on the global logger.)
 func Debug(args ...any) {
 	Std().Debug(args...)
 }
 
-// Debugf logs a message at DebugLevel using the global logger.
+// Debugf 在全局 logger 上调用 Debugf。
+// (Debugf calls Debugf on the global logger.)
 func Debugf(template string, args ...any) {
 	Std().Debugf(template, args...)
 }
 
-// Debugw logs a message at DebugLevel with key-value pairs using the global logger.
+// Debugw 在全局 logger 上调用 Debugw。
+// (Debugw calls Debugw on the global logger.)
 func Debugw(msg string, keysAndValues ...any) {
 	Std().Debugw(msg, keysAndValues...)
 }
 
-// Info logs a message at InfoLevel using the global logger.
+// Info 在全局 logger 上调用 Info。
+// (Info calls Info on the global logger.)
 func Info(args ...any) {
 	Std().Info(args...)
 }
 
-// Infof logs a message at InfoLevel using the global logger.
+// Infof 在全局 logger 上调用 Infof。
+// (Infof calls Infof on the global logger.)
 func Infof(template string, args ...any) {
 	Std().Infof(template, args...)
 }
 
-// Infow logs a message at InfoLevel with key-value pairs using the global logger.
+// Infow 在全局 logger 上调用 Infow。
+// (Infow calls Infow on the global logger.)
 func Infow(msg string, keysAndValues ...any) {
 	Std().Infow(msg, keysAndValues...)
 }
 
-// Warn logs a message at WarnLevel using the global logger.
+// Warn 在全局 logger 上调用 Warn。
+// (Warn calls Warn on the global logger.)
 func Warn(args ...any) {
 	Std().Warn(args...)
 }
 
-// Warnf logs a message at WarnLevel using the global logger.
+// Warnf 在全局 logger 上调用 Warnf。
+// (Warnf calls Warnf on the global logger.)
 func Warnf(template string, args ...any) {
 	Std().Warnf(template, args...)
 }
 
-// Warnw logs a message at WarnLevel with key-value pairs using the global logger.
+// Warnw 在全局 logger 上调用 Warnw。
+// (Warnw calls Warnw on the global logger.)
 func Warnw(msg string, keysAndValues ...any) {
 	Std().Warnw(msg, keysAndValues...)
 }
 
-// Error logs a message at ErrorLevel using the global logger.
+// Error 在全局 logger 上调用 Error。
+// (Error calls Error on the global logger.)
 func Error(args ...any) {
 	Std().Error(args...)
 }
 
-// Errorf logs a message at ErrorLevel using the global logger.
+// Errorf 在全局 logger 上调用 Errorf。
+// (Errorf calls Errorf on the global logger.)
 func Errorf(template string, args ...any) {
 	Std().Errorf(template, args...)
 }
 
-// Errorw logs a message at ErrorLevel with key-value pairs using the global logger.
+// Errorw 在全局 logger 上调用 Errorw。
+// (Errorw calls Errorw on the global logger.)
 func Errorw(msg string, keysAndValues ...any) {
 	Std().Errorw(msg, keysAndValues...)
 }
 
-// Fatal logs a message at FatalLevel using the global logger, then calls os.Exit(1).
+// Fatal 在全局 logger 上调用 Fatal。
+// (Fatal calls Fatal on the global logger.)
 func Fatal(args ...any) {
 	Std().Fatal(args...)
 }
 
-// Fatalf logs a message at FatalLevel using the global logger, then calls os.Exit(1).
+// Fatalf 在全局 logger 上调用 Fatalf。
+// (Fatalf calls Fatalf on the global logger.)
 func Fatalf(template string, args ...any) {
 	Std().Fatalf(template, args...)
 }
 
-// Fatalw logs a message at FatalLevel with key-value pairs using the global logger, then calls os.Exit(1).
+// Fatalw 在全局 logger 上调用 Fatalw。
+// (Fatalw calls Fatalw on the global logger.)
 func Fatalw(msg string, keysAndValues ...any) {
 	Std().Fatalw(msg, keysAndValues...)
 }
 
-// Ctx logs a message at InfoLevel using the global logger, extracting fields from the context.
+// Ctx 在全局 logger 上调用 Ctx。
+// (Ctx calls Ctx on the global logger.)
 func Ctx(ctx context.Context, args ...any) {
 	Std().Ctx(ctx, args...)
 }
 
-// Ctxf logs a message at InfoLevel using the global logger, extracting fields from the context.
+// Ctxf 在全局 logger 上调用 Ctxf。
+// (Ctxf calls Ctxf on the global logger.)
 func Ctxf(ctx context.Context, template string, args ...any) {
 	Std().Ctxf(ctx, template, args...)
 }
 
-// Ctxw logs a message at InfoLevel with key-value pairs using the global logger, extracting fields from the context.
+// Ctxw 在全局 logger 上调用 Ctxw。
+// (Ctxw calls Ctxw on the global logger.)
 func Ctxw(ctx context.Context, msg string, keysAndValues ...any) {
 	Std().Ctxw(ctx, msg, keysAndValues...)
 }
 
-// WithValues adds key-value pairs context to the global logger, returning a new logger.
+// WithValues 在全局 logger 上调用 WithValues 并返回一个新的 Logger 实例。
+// (WithValues calls WithValues on the global logger and returns a new Logger instance.)
 func WithValues(keysAndValues ...any) Logger {
 	return Std().WithValues(keysAndValues...)
 }
 
-// WithName adds a new element to the global logger's name, returning a new logger.
+// WithName 在全局 logger 上调用 WithName 并返回一个新的 Logger 实例。
+// (WithName calls WithName on the global logger and returns a new Logger instance.)
 func WithName(name string) Logger {
 	return Std().WithName(name)
 }
 
-// --- Global Contextual Logging Convenience Functions ---
-// (全局上下文日志便捷函数)
+// --- 已有的 logger 方法实现 (示例，确保它们都存在) ---
+func (l *logger) Debug(args ...any) { l.zapLogger.Sugar().Debug(args...) }
+func (l *logger) Debugf(template string, args ...any) { l.zapLogger.Sugar().Debugf(template, args...) }
+func (l *logger) Debugw(msg string, keysAndValues ...any) { l.zapLogger.Sugar().Debugw(msg, keysAndValues...) }
 
-// CtxDebugf 使用 fmt.Sprintf 风格记录一条 Debug 级别的消息，并从 context 中提取字段，通过全局记录器。
-// (CtxDebugf logs a message at DebugLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+func (l *logger) Info(args ...any) { l.zapLogger.Sugar().Info(args...) }
+func (l *logger) Infof(template string, args ...any) { l.zapLogger.Sugar().Infof(template, args...) }
+func (l *logger) Infow(msg string, keysAndValues ...any) {
+	if l.opts.Format == FormatKeyValue {
+		if kvStr := formatKeyValuePairs(keysAndValues...); kvStr != "" {
+			msg = msg + " " + kvStr
+		}
+		l.zapLogger.Sugar().Info(msg)
+	} else {
+		l.zapLogger.Sugar().Infow(msg, keysAndValues...)
+	}
+}
+
+func (l *logger) Warn(args ...any) { l.zapLogger.Sugar().Warn(args...) }
+func (l *logger) Warnf(template string, args ...any) { l.zapLogger.Sugar().Warnf(template, args...) }
+func (l *logger) Warnw(msg string, keysAndValues ...any) {
+	if l.opts.Format == FormatKeyValue {
+		if kvStr := formatKeyValuePairs(keysAndValues...); kvStr != "" {
+			msg = msg + " " + kvStr
+		}
+		l.zapLogger.Sugar().Warn(msg)
+	} else {
+		l.zapLogger.Sugar().Warnw(msg, keysAndValues...)
+	}
+}
+
+func (l *logger) Error(args ...any) { l.zapLogger.Sugar().Error(args...) }
+func (l *logger) Errorf(template string, args ...any) { l.zapLogger.Sugar().Errorf(template, args...) }
+func (l *logger) Errorw(msg string, keysAndValues ...any) { l.zapLogger.Sugar().Errorw(msg, keysAndValues...) }
+
+func (l *logger) Fatal(args ...any) { l.zapLogger.Sugar().Fatal(args...) }
+func (l *logger) Fatalf(template string, args ...any) { l.zapLogger.Sugar().Fatalf(template, args...) }
+func (l *logger) Fatalw(msg string, keysAndValues ...any) { l.zapLogger.Sugar().Fatalw(msg, keysAndValues...) }
+
+func (l *logger) Ctx(ctx context.Context, args ...any) {
+	fields := extractContextFields(ctx, l.opts.ContextKeys)
+	l.zapLogger.With(fields...).Sugar().Info(args...)
+}
+
+func (l *logger) Ctxf(ctx context.Context, template string, args ...any) {
+	fields := extractContextFields(ctx, l.opts.ContextKeys)
+	l.zapLogger.With(fields...).Sugar().Infof(template, args...)
+}
+
+func (l *logger) Ctxw(ctx context.Context, msg string, keysAndValues ...any) {
+	fields := extractContextFields(ctx, l.opts.ContextKeys)
+	
+	if l.opts.Format == FormatKeyValue {
+		// 对于 key=value 格式，将字段格式化为字符串并附加到消息中
+		// (For key=value format, format fields as string and append to message)
+		var allParts []string
+		
+		// 添加上下文字段
+		// (Add context fields)
+		if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+			allParts = append(allParts, contextStr)
+		}
+		
+		// 添加额外的键值对
+		// (Add additional key-value pairs)
+		if kvStr := formatKeyValuePairs(keysAndValues...); kvStr != "" {
+			allParts = append(allParts, kvStr)
+		}
+		
+		// 如果有字段，将它们附加到消息中
+		// (If there are fields, append them to the message)
+		if len(allParts) > 0 {
+			msg = msg + " " + strings.Join(allParts, " ")
+		}
+		
+		l.zapLogger.Sugar().Info(msg)
+	} else {
+		// 对于其他格式，使用原有逻辑
+		// (For other formats, use original logic)
+		allFields := append(keysAndValues, fieldsToZapAny(fields)...)
+		l.zapLogger.Sugar().Infow(msg, allFields...)
+	}
+}
+
+func (l *logger) Sync() error { return l.zapLogger.Sync() }
+
+func (l *logger) WithValues(keysAndValues ...any) Logger {
+	if l.opts.Format == FormatKeyValue {
+		// 对于 key=value 格式，我们需要特殊处理
+		// 创建一个包装器，在日志时添加这些字段
+		// (For key=value format, we need special handling)
+		// (Create a wrapper that adds these fields when logging)
+		return &keyValueLogger{
+			baseLogger: l,
+			fields:     keysAndValues,
+		}
+	} else {
+		// 对于其他格式，使用原有逻辑
+		// (For other formats, use original logic)
+		return &logger{
+			zapLogger: l.zapLogger.With(zapFields(keysAndValues...)...), // Ensure zapFields handles pairs correctly
+			opts:      l.opts, // Options are typically immutable after logger creation or carried over
+		}
+	}
+}
+
+func (l *logger) WithName(name string) Logger {
+	return &logger{
+		zapLogger: l.zapLogger.Named(name),
+		opts:      l.opts,
+	}
+}
+func (l *logger) GetZapLogger() *zap.Logger {
+	return l.zapLogger
+}
+
+// --- Contextual logging methods for *logger ---
+func (l *logger) CtxDebugf(ctx context.Context, template string, args ...interface{}) {
+		fields := extractContextFields(ctx, l.opts.ContextKeys)
+		l.zapLogger.With(fields...).Sugar().Debugf(template, args...)
+	}
+func (l *logger) CtxInfof(ctx context.Context, template string, args ...interface{}) {
+		fields := extractContextFields(ctx, l.opts.ContextKeys)
+		l.zapLogger.With(fields...).Sugar().Infof(template, args...)
+	}
+func (l *logger) CtxWarnf(ctx context.Context, template string, args ...interface{}) {
+		fields := extractContextFields(ctx, l.opts.ContextKeys)
+		l.zapLogger.With(fields...).Sugar().Warnf(template, args...)
+	}
+func (l *logger) CtxErrorf(ctx context.Context, template string, args ...interface{}) {
+		fields := extractContextFields(ctx, l.opts.ContextKeys)
+		l.zapLogger.With(fields...).Sugar().Errorf(template, args...)
+	}
+func (l *logger) CtxPanicf(ctx context.Context, template string, args ...interface{}) {
+	fields := extractContextFields(ctx, l.opts.ContextKeys)
+	l.zapLogger.With(fields...).Sugar().Panicf(template, args...)
+}
+func (l *logger) CtxFatalf(ctx context.Context, template string, args ...interface{}) {
+	fields := extractContextFields(ctx, l.opts.ContextKeys)
+	l.zapLogger.With(fields...).Sugar().Fatalf(template, args...)
+}
+
+// Helper function to convert variadic key-value pairs to zap.Field array
+// Ensure it handles non-string keys or odd number of arguments gracefully if necessary,
+// though zap.Any typically handles pairs.
+func zapFields(keysAndValues ...any) []zap.Field {
+	if len(keysAndValues)%2 != 0 {
+		// Log an internal error or handle mismatched pairs, e.g., by ignoring the last odd key
+		// For simplicity, zap.Any might handle this, or we can enforce pair logging.
+		// This could be a source of panic if not handled well by zap.Any or if keys are not strings.
+		// Zap's SugaredLogger's ...w methods are more robust here.
+		// For direct zap.Logger.With, fields must be constructed carefully.
+		// Let's assume keysAndValues are proper Field pairs or zap.Any can handle them.
+		// A more robust way for WithValues:
+		// if sugar := l.zapLogger.Sugar(); sugar != nil {
+		//     return sugar.With(keysAndValues...).Desugar().Core(). ... no, this is not right.
+		// }
+		// For now, we'll rely on zap.Any correctly interpreting these.
+		// A better approach for WithValues might be to take []zap.Field directly or process carefully.
+		var fields []zap.Field
+		for i := 0; i < len(keysAndValues); i += 2 {
+			if i+1 < len(keysAndValues) {
+				if key, ok := keysAndValues[i].(string); ok {
+					fields = append(fields, zap.Any(key, keysAndValues[i+1]))
+				}
+				// else: log an error, key is not a string
+			}
+			// else: log an error, odd number of arguments
+		}
+		return fields
+	}
+	// Simplified if assuming zap.Any can handle it directly (might not be true for zap.Logger.With)
+	// Correct for zap.Logger.With is to pass []zap.Field.
+	// zap.SugaredLogger.With correctly handles ...any.
+	// Since our Logger interface resembles SugaredLogger, maybe logger.zapLogger should be *zap.SugaredLogger?
+	// Or we properly construct []zap.Field here.
+	var fields []zap.Field
+	for i := 0; i < len(keysAndValues); i += 2 {
+		if key, ok := keysAndValues[i].(string); ok {
+			fields = append(fields, zap.Any(key, keysAndValues[i+1]))
+		} else {
+			// Handle non-string key, e.g., log an error or skip
+			fmt.Fprintf(os.Stderr, "Warning: Non-string key provided to WithValues: %v (type %T)\\n", keysAndValues[i], keysAndValues[i])
+		}
+	}
+	return fields
+}
+
+// fieldsToZapAny converts a slice of zap.Field to a slice of any for Infow/Errorw etc.
+// This is needed if Ctxw appends zap.Field to a ...any slice.
+func fieldsToZapAny(fields []zap.Field) []any {
+	result := make([]any, 0, len(fields)*2)
+	for _, f := range fields {
+		// For Infow, Errorw, etc., which take ...any, we need key-value pairs.
+		// Extract the actual value from the zap.Field
+		// (从 zap.Field 中提取实际值)
+		var value any
+		if f.Interface != nil {
+			value = f.Interface
+		} else {
+			// Fallback to type-specific fields
+			// (回退到特定类型的字段)
+			switch f.Type {
+			case zapcore.StringType:
+				value = f.String
+			case zapcore.BoolType:
+				value = f.Integer != 0
+			default:
+				value = f.Integer
+			}
+		}
+		result = append(result, f.Key, value)
+	}
+	return result
+}
+
+// formatFieldsAsKeyValue 将字段格式化为 key=value 格式的字符串
+// (formatFieldsAsKeyValue formats fields as key=value format string)
+func formatFieldsAsKeyValue(fields []zap.Field) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	
+	var parts []string
+	for _, f := range fields {
+		var value string
+		if f.Interface != nil {
+			value = fmt.Sprintf("%v", f.Interface)
+		} else {
+			switch f.Type {
+			case zapcore.StringType:
+				value = f.String
+			case zapcore.BoolType:
+				if f.Integer != 0 {
+					value = "true"
+				} else {
+					value = "false"
+				}
+			default:
+				value = fmt.Sprintf("%v", f.Integer)
+			}
+		}
+		// 如果值包含空格，用引号包围
+		// (If value contains spaces, surround with quotes)
+		if strings.Contains(value, " ") {
+			value = fmt.Sprintf(`"%s"`, value)
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", f.Key, value))
+	}
+	return strings.Join(parts, " ")
+}
+
+// formatKeyValuePairs 将键值对格式化为 key=value 格式的字符串
+// (formatKeyValuePairs formats key-value pairs as key=value format string)
+func formatKeyValuePairs(keysAndValues ...any) string {
+	if len(keysAndValues) == 0 {
+		return ""
+	}
+	
+	var parts []string
+	for i := 0; i < len(keysAndValues); i += 2 {
+		if i+1 >= len(keysAndValues) {
+			break // 跳过奇数个参数的最后一个
+		}
+		
+		key := fmt.Sprintf("%v", keysAndValues[i])
+		value := fmt.Sprintf("%v", keysAndValues[i+1])
+		
+		// 如果值包含空格，用引号包围
+		// (If value contains spaces, surround with quotes)
+		if strings.Contains(value, " ") {
+			value = fmt.Sprintf(`"%s"`, value)
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+	}
+	return strings.Join(parts, " ")
+}
+
+// extractContextFields extracts configured keys from context and returns them as zap.Fields
+func extractContextFields(ctx context.Context, contextKeys []any) []zap.Field { // Changed to []any
+	if ctx == nil || len(contextKeys) == 0 {
+		return nil
+	}
+	var fields []zap.Field
+	for _, keyAny := range contextKeys {
+		if keyAny == nil {
+			continue
+		} // Skip nil keys in the list
+
+		value := ctx.Value(keyAny)
+		if value != nil {
+			var keyStr string
+			switch typedKey := keyAny.(type) {
+			case string:
+				keyStr = typedKey
+			case contextKey:
+				switch typedKey {
+				case TraceIDKey:
+					keyStr = "trace_id"
+				case RequestIDKey:
+					keyStr = "request_id"
+				default:
+					keyStr = fmt.Sprintf("%v", typedKey) // Fallback for other contextKey values
+				}
+			case fmt.Stringer:
+				keyStr = typedKey.String()
+			default:
+				// For custom string-based types (like type MyKey string), convert to string
+				// (对于基于字符串的自定义类型（如 type MyKey string），转换为字符串)
+				keyStr = fmt.Sprintf("%s", keyAny)
+			}
+			fields = append(fields, zap.Any(keyStr, value))
+		}
+	}
+	return fields
+}
+
+// Make sure to import "gopkg.in/natefinch/lumberjack.v2" if RotationConfig is used.
+// For example:
+// import (
+//     // ...
+//     "gopkg.in/natefinch/lumberjack.v2"
+// )
+// This should be at the top of the file.
+
+// Ensure RotationConfig fields are correctly mapped from options to lumberjack.Logger
+// E.g., opts.RotationConfig.Enable, opts.RotationConfig.MaxSizeMB, etc.
+// The current getWriteSyncerForPaths has a placeholder for this.
+
+// --- Global Contextual Logging Functions ---
+// (全局上下文日志记录函数)
+
+// CtxDebugf 在全局 logger 上调用 CtxDebugf。
+// (CtxDebugf calls CtxDebugf on the global logger.)
 func CtxDebugf(ctx context.Context, template string, args ...interface{}) {
 	Std().CtxDebugf(ctx, template, args...)
 }
 
-// CtxInfof 使用 fmt.Sprintf 风格记录一条 Info 级别的消息，并从 context 中提取字段，通过全局记录器。
-// (CtxInfof logs a message at InfoLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+// CtxInfof 在全局 logger 上调用 CtxInfof。
+// (CtxInfof calls CtxInfof on the global logger.)
 func CtxInfof(ctx context.Context, template string, args ...interface{}) {
 	Std().CtxInfof(ctx, template, args...)
 }
 
-// CtxWarnf 使用 fmt.Sprintf 风格记录一条 Warn 级别的消息，并从 context 中提取字段，通过全局记录器。
-// (CtxWarnf logs a message at WarnLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+// CtxWarnf 在全局 logger 上调用 CtxWarnf。
+// (CtxWarnf calls CtxWarnf on the global logger.)
 func CtxWarnf(ctx context.Context, template string, args ...interface{}) {
 	Std().CtxWarnf(ctx, template, args...)
 }
 
-// CtxErrorf 使用 fmt.Sprintf 风格记录一条 Error 级别的消息，并从 context 中提取字段，通过全局记录器。
-// (CtxErrorf logs a message at ErrorLevel using fmt.Sprintf style, extracting fields from the context, via the global logger.)
+// CtxErrorf 在全局 logger 上调用 CtxErrorf。
+// (CtxErrorf calls CtxErrorf on the global logger.)
 func CtxErrorf(ctx context.Context, template string, args ...interface{}) {
 	Std().CtxErrorf(ctx, template, args...)
 }
 
-// CtxPanicf 使用 fmt.Sprintf 风格记录一条 Panic 级别的消息，然后发生 panic，并从 context 中提取字段，通过全局记录器。
-// (CtxPanicf logs a message at PanicLevel using fmt.Sprintf style, then panics, extracting fields from the context, via the global logger.)
+// CtxPanicf 在全局 logger 上调用 CtxPanicf。
+// (CtxPanicf calls CtxPanicf on the global logger.)
 func CtxPanicf(ctx context.Context, template string, args ...interface{}) {
 	Std().CtxPanicf(ctx, template, args...)
 }
 
-// CtxFatalf 使用 fmt.Sprintf 风格记录一条 Fatal 级别的消息，然后调用 os.Exit(1)，并从 context 中提取字段，通过全局记录器。
-// (CtxFatalf logs a message at FatalLevel using fmt.Sprintf style, then calls os.Exit(1), extracting fields from the context, via the global logger.)
+// CtxFatalf 在全局 logger 上调用 CtxFatalf。
+// (CtxFatalf calls CtxFatalf on the global logger.)
 func CtxFatalf(ctx context.Context, template string, args ...interface{}) {
 	Std().CtxFatalf(ctx, template, args...)
 }
 
-// --- Contextual Logging Implementation ---
+// --- keyValueLogger 方法实现 ---
+// (keyValueLogger method implementations)
 
-// extractContextFields 从 context 中提取预定义的和用户指定的键。
-// (extractContextFields extracts predefined and user-specified keys from the context.)
-func extractContextFields(ctx context.Context, userKeys []any) []zap.Field {
-	if ctx == nil {
-		return nil
+func (kvl *keyValueLogger) Debug(args ...any) {
+	msg := fmt.Sprint(args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
 	}
-
-	fields := make([]zap.Field, 0, 2+len(userKeys)) // Preallocate slice
-
-	// 提取预定义的键 (Extract predefined keys)
-	if traceID, ok := TraceIDFromContext(ctx); ok {
-		// 注意：键的名称需要确定，这里暂时使用 "trace_id"
-		// (Note: The key name needs to be decided, using "trace_id" for now)
-		fields = append(fields, zap.String("trace_id", traceID))
-	}
-	if requestID, ok := RequestIDFromContext(ctx); ok {
-		// 同样，键名需要确定，使用 "request_id"
-		// (Similarly, key name needs to be decided, using "request_id")
-		fields = append(fields, zap.String("request_id", requestID))
-	}
-
-	// 提取用户指定的键 (Extract user-specified keys)
-	for _, key := range userKeys {
-		if value := ctx.Value(key); value != nil {
-			// 将键转换为字符串（如果可能），否则使用默认名称
-			// (Convert key to string if possible, otherwise use default name)
-			keyStr := fmt.Sprintf("%v", key)
-			
-			// 尝试将值转换为字符串（如果可能）
-			// (Try to convert value to string if possible)
-			if strVal, ok := value.(string); ok {
-				fields = append(fields, zap.String(keyStr, strVal))
-			} else {
-				// 如果不是字符串，则使用 fmt.Sprintf 转换为字符串
-				// (If not a string, use fmt.Sprintf to convert to string)
-				strVal := fmt.Sprintf("%v", value)
-				fields = append(fields, zap.String(keyStr, strVal))
-			}
-		}
-	}
-
-	return fields
+	kvl.baseLogger.Debug(msg)
 }
 
-func (l *logger) CtxDebugf(ctx context.Context, template string, args ...interface{}) {
-	if l.zapLogger.Level() <= zapcore.DebugLevel {
-		fields := extractContextFields(ctx, l.opts.ContextKeys)
-		l.zapLogger.With(fields...).Sugar().Debugf(template, args...)
+func (kvl *keyValueLogger) Debugf(template string, args ...any) {
+	msg := fmt.Sprintf(template, args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Debug(msg)
+}
+
+func (kvl *keyValueLogger) Debugw(msg string, keysAndValues ...any) {
+	allFields := append(kvl.fields, keysAndValues...)
+	if kvStr := formatKeyValuePairs(allFields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Debug(msg)
+}
+
+func (kvl *keyValueLogger) Info(args ...any) {
+	msg := fmt.Sprint(args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Info(msg)
+}
+
+func (kvl *keyValueLogger) Infof(template string, args ...any) {
+	msg := fmt.Sprintf(template, args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Info(msg)
+}
+
+func (kvl *keyValueLogger) Infow(msg string, keysAndValues ...any) {
+	allFields := append(kvl.fields, keysAndValues...)
+	if kvStr := formatKeyValuePairs(allFields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Info(msg)
+}
+
+func (kvl *keyValueLogger) Warn(args ...any) {
+	msg := fmt.Sprint(args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Warn(msg)
+}
+
+func (kvl *keyValueLogger) Warnf(template string, args ...any) {
+	msg := fmt.Sprintf(template, args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Warn(msg)
+}
+
+func (kvl *keyValueLogger) Warnw(msg string, keysAndValues ...any) {
+	allFields := append(kvl.fields, keysAndValues...)
+	if kvStr := formatKeyValuePairs(allFields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Warn(msg)
+}
+
+func (kvl *keyValueLogger) Error(args ...any) {
+	msg := fmt.Sprint(args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Error(msg)
+}
+
+func (kvl *keyValueLogger) Errorf(template string, args ...any) {
+	msg := fmt.Sprintf(template, args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Error(msg)
+}
+
+func (kvl *keyValueLogger) Errorw(msg string, keysAndValues ...any) {
+	allFields := append(kvl.fields, keysAndValues...)
+	if kvStr := formatKeyValuePairs(allFields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Error(msg)
+}
+
+func (kvl *keyValueLogger) Fatal(args ...any) {
+	msg := fmt.Sprint(args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Fatal(msg)
+}
+
+func (kvl *keyValueLogger) Fatalf(template string, args ...any) {
+	msg := fmt.Sprintf(template, args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Fatal(msg)
+}
+
+func (kvl *keyValueLogger) Fatalw(msg string, keysAndValues ...any) {
+	allFields := append(kvl.fields, keysAndValues...)
+	if kvStr := formatKeyValuePairs(allFields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.Fatal(msg)
+}
+
+func (kvl *keyValueLogger) DPanic(args ...any) {
+	msg := fmt.Sprint(args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.DPanic(msg)
+}
+
+func (kvl *keyValueLogger) DPanicf(template string, args ...any) {
+	msg := fmt.Sprintf(template, args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.DPanic(msg)
+}
+
+func (kvl *keyValueLogger) DPanicw(msg string, keysAndValues ...any) {
+	allFields := append(kvl.fields, keysAndValues...)
+	if kvStr := formatKeyValuePairs(allFields...); kvStr != "" {
+		msg = msg + " " + kvStr
+	}
+	kvl.baseLogger.DPanic(msg)
+}
+
+func (kvl *keyValueLogger) Ctx(ctx context.Context, args ...any) {
+	msg := fmt.Sprint(args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Info(msg)
+}
+
+func (kvl *keyValueLogger) Ctxf(ctx context.Context, template string, args ...any) {
+	msg := fmt.Sprintf(template, args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Info(msg)
+}
+
+func (kvl *keyValueLogger) Ctxw(ctx context.Context, msg string, keysAndValues ...any) {
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	
+	allFields := append(kvl.fields, keysAndValues...)
+	if kvStr := formatKeyValuePairs(allFields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Info(msg)
+}
+
+func (kvl *keyValueLogger) Sync() error {
+	return kvl.baseLogger.Sync()
+}
+
+func (kvl *keyValueLogger) WithValues(keysAndValues ...any) Logger {
+	// 合并现有字段和新字段
+	// (Merge existing fields with new fields)
+	allFields := append(kvl.fields, keysAndValues...)
+	return &keyValueLogger{
+		baseLogger: kvl.baseLogger,
+		fields:     allFields,
 	}
 }
 
-func (l *logger) CtxInfof(ctx context.Context, template string, args ...interface{}) {
-	if l.zapLogger.Level() <= zapcore.InfoLevel {
-		fields := extractContextFields(ctx, l.opts.ContextKeys)
-		l.zapLogger.With(fields...).Sugar().Infof(template, args...)
+func (kvl *keyValueLogger) WithName(name string) Logger {
+	return &keyValueLogger{
+		baseLogger: &logger{
+			zapLogger: kvl.baseLogger.zapLogger.Named(name),
+			opts:      kvl.baseLogger.opts,
+		},
+		fields: kvl.fields,
 	}
 }
 
-func (l *logger) CtxWarnf(ctx context.Context, template string, args ...interface{}) {
-	if l.zapLogger.Level() <= zapcore.WarnLevel {
-		fields := extractContextFields(ctx, l.opts.ContextKeys)
-		l.zapLogger.With(fields...).Sugar().Warnf(template, args...)
+func (kvl *keyValueLogger) GetZapLogger() *zap.Logger {
+	return kvl.baseLogger.GetZapLogger()
+}
+
+func (kvl *keyValueLogger) CtxDebugf(ctx context.Context, template string, args ...interface{}) {
+	msg := fmt.Sprintf(template, args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
 	}
-}
-
-func (l *logger) CtxErrorf(ctx context.Context, template string, args ...interface{}) {
-	if l.zapLogger.Level() <= zapcore.ErrorLevel {
-		fields := extractContextFields(ctx, l.opts.ContextKeys)
-		l.zapLogger.With(fields...).Sugar().Errorf(template, args...)
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
 	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Debug(msg)
 }
 
-func (l *logger) CtxPanicf(ctx context.Context, template string, args ...interface{}) {
-	// Panic level always logs regardless of configured level
-	fields := extractContextFields(ctx, l.opts.ContextKeys)
-	l.zapLogger.With(fields...).Sugar().Panicf(template, args...)
+func (kvl *keyValueLogger) CtxInfof(ctx context.Context, template string, args ...interface{}) {
+	msg := fmt.Sprintf(template, args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Info(msg)
 }
 
-func (l *logger) CtxFatalf(ctx context.Context, template string, args ...interface{}) {
-	// Fatal level always logs regardless of configured level
-	fields := extractContextFields(ctx, l.opts.ContextKeys)
-	l.zapLogger.With(fields...).Sugar().Fatalf(template, args...)
+func (kvl *keyValueLogger) CtxWarnf(ctx context.Context, template string, args ...interface{}) {
+	msg := fmt.Sprintf(template, args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Warn(msg)
 }
+
+func (kvl *keyValueLogger) CtxErrorf(ctx context.Context, template string, args ...interface{}) {
+	msg := fmt.Sprintf(template, args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Error(msg)
+}
+
+func (kvl *keyValueLogger) CtxPanicf(ctx context.Context, template string, args ...interface{}) {
+	msg := fmt.Sprintf(template, args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.zapLogger.Sugar().Panicf(msg)
+}
+
+func (kvl *keyValueLogger) CtxFatalf(ctx context.Context, template string, args ...interface{}) {
+	msg := fmt.Sprintf(template, args...)
+	fields := extractContextFields(ctx, kvl.baseLogger.opts.ContextKeys)
+	
+	var allParts []string
+	if contextStr := formatFieldsAsKeyValue(fields); contextStr != "" {
+		allParts = append(allParts, contextStr)
+	}
+	if kvStr := formatKeyValuePairs(kvl.fields...); kvStr != "" {
+		allParts = append(allParts, kvStr)
+	}
+	
+	if len(allParts) > 0 {
+		msg = msg + " " + strings.Join(allParts, " ")
+	}
+	kvl.baseLogger.Fatal(msg)
+}
+
+
+
+// getEncoder 根据 Options 配置返回一个 zapcore.Encoder。
+// (getEncoder returns a zapcore.Encoder based on the Options configuration.)
+// ... existing code ...
+

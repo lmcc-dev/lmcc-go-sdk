@@ -211,10 +211,11 @@ func TestConfigCallback_Registration(t *testing.T) {
 	cm.RegisterCallback(cb1) // Register cb1 again
 
 	// Manually trigger notification to test callback execution
-	cm.notifyCallbacks()
+	cm.notifyCallbacks() // This function logs errors internally but does not return them.
 
 	// Check if callbacks were called the correct number of times
 	assert.Equal(t, int32(2), cb1Count.Load(), "Callback 1 should have been called twice")
 	assert.Equal(t, int32(1), cb2Count.Load(), "Callback 2 should have been called once")
-	// We logged the error from cb2, but didn't stop other callbacks.
+	// We can't easily assert the logged aggregate error without log capturing.
+	// The primary check here is that callbacks are invoked as expected.
 } 

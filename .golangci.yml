@@ -21,7 +21,8 @@ linters:
 
 # 输出设置
 output:
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
 
 # 忽略的问题
 issues:

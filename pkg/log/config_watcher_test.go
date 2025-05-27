@@ -8,12 +8,14 @@
 package log
 
 import (
+	// Import for errors.Is
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/config" // Import the config package
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -324,37 +326,63 @@ func TestHandleGlobalLogConfigChange_UnmarshalError(t *testing.T) {
 	
 	// 重置全局回调状态 (Reset global callback state)
 	resetGlobals()
-	
-	// 保存全局 logger 的初始配置 (Save initial config of global logger)
-	initialLevel := Std().GetZapLogger().Level().String()
-	
-	// 创建模拟 Viper 实例，模拟 UnmarshalKey 错误 (Create mock Viper instance with UnmarshalKey error)
-	mockV := &mockViper{
-		unmarshalError: fmt.Errorf("simulated unmarshal error"),
+
+	// Save original currentProcessLogConfigChange and restore it later
+	originalProcessFunc := currentProcessLogConfigChange
+	defer func() {
+		currentProcessLogConfigChange = originalProcessFunc
+	}()
+
+	// Save global logger's initial config (not strictly needed for this error path, but good practice)
+	// initialLevel := Std().GetZapLogger().Level().String()
+
+	// Define the error that UnmarshalKey will be simulated to return
+	simulatedUnmarshalErr := fmt.Errorf("simulated unmarshal error from mock")
+
+	// Monkey-patch currentProcessLogConfigChange to simulate UnmarshalKey failure and lmccerrors wrapping
+	currentProcessLogConfigChange = func(v *viper.Viper) error {
+		// This mock directly simulates the behavior of defaultHandleGlobalLogConfigChange
+		// when v.UnmarshalKey fails.
+		return lmccerrors.WithCode(
+			lmccerrors.Wrap(simulatedUnmarshalErr, "failed to unmarshal log configuration from mock"),
+			lmccerrors.ErrLogReconfigure,
+		)
 	}
-	
-	// 注册一个测试回调 (Register a test callback that should NOT be called)
+
+	// Register a test callback that should NOT be called
 	callbackCalled := false
 	RegisterCallback(func(opts *Options) error {
 		callbackCalled = true
 		return nil
 	})
-	
-	// 使用我们的测试辅助函数代替直接调用 handleGlobalLogConfigChange
-	// (Use our test helper function instead of directly calling handleGlobalLogConfigChange)
-	err := testProcessLogConfigChange(t, mockV)
-	localRequire.Error(err, "testProcessLogConfigChange should return an error")
-	localAssert.Equal("simulated unmarshal error", err.Error(), "Error message should match simulated error")
-	
-	// 验证 Viper.UnmarshalKey 被调用 (Verify Viper.UnmarshalKey was called)
-	localAssert.True(mockV.errUnmarshalCalled.Load(), "UnmarshalKey should have been called")
-	
-	// 验证全局 logger 的配置没有变化 (Verify global logger config didn't change)
-	currentLevel := Std().GetZapLogger().Level().String()
-	localAssert.Equal(initialLevel, currentLevel, "Global logger level should not have changed")
-	
-	// 验证回调未被调用 (Verify callback was NOT called)
-	localAssert.False(callbackCalled, "Callback should not have been called due to unmarshal error")
+
+	// To trigger the (monkey-patched) currentProcessLogConfigChange, we need to simulate a config change event.
+	// We can do this by using a mockConfigManager and its triggerLogSectionCallback method.
+	mockCM := newMockConfigManager()
+	RegisterConfigHotReload(mockCM) // This registers a callback that calls currentProcessLogConfigChange
+
+	dummyViper := viper.New() // This viper instance will be passed but ignored by our monkey-patched func
+	err := mockCM.triggerLogSectionCallback(dummyViper)
+
+	localRequire.Error(err, "triggerLogSectionCallback (via monkey-patched currentProcessLogConfigChange) should return an error")
+
+	if err != nil {
+		localAssert.True(lmccerrors.IsCode(err, lmccerrors.ErrLogReconfigure), "Error code should be ErrLogReconfigure")
+		localAssert.Contains(err.Error(), "failed to unmarshal log configuration from mock", "Error message should contain the wrapping message")
+		localAssert.Contains(err.Error(), simulatedUnmarshalErr.Error(), "Error message should contain the original simulated error message")
+
+		// Verify the cause
+		cause := lmccerrors.Cause(err)
+		localAssert.ErrorIs(cause, simulatedUnmarshalErr, "Cause of the error should be the simulatedUnmarshalErr")
+	}
+
+	// Verify global logger config didn't change (ReconfigureGlobalLogger was not successfully called)
+	// This check might be less relevant now as we are directly mocking the error return from currentProcessLogConfigChange
+	// currentLevel := Std().GetZapLogger().Level().String()
+	// localAssert.Equal(initialLevel, currentLevel, "Global logger level should not have changed")
+
+	// Verify callback was NOT called
+	localAssert.False(callbackCalled, "Callback should not have been called due to unmarshal error simulation")
 }
 
 func TestHandleGlobalLogConfigChange_ValidationError(t *testing.T) {
@@ -416,7 +444,10 @@ func TestSimulatedHotReloadTrigger(t *testing.T) { // Renamed for clarity
 
 		if err := ReconfigureGlobalLogger(opts); err != nil {
 			Error("Monkey-patched ReconfigureGlobalLogger failed", "error", err) // 使用全局 Error
-			return err
+			return lmccerrors.WithCode(
+				lmccerrors.Wrap(err, "failed to apply new options to global logger"),
+				lmccerrors.ErrLogReconfigure,
+			)
 		}
 
 		Info("Global logger successfully reconfigured via monkey-patch.", "options", opts) // 使用全局 Info

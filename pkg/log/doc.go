@@ -20,8 +20,8 @@ Core Features:
     (结构化日志：利用 zap 实现高效的结构化日志记录。)
   - Multiple Log Levels: Supports standard levels (Debug, Info, Warn, Error, Fatal, Panic).
     (多日志级别：支持标准级别（Debug, Info, Warn, Error, Fatal, Panic）。)
-  - Configurable Output Formats: Supports JSON and human-readable console (text) formats.
-    (可配置的输出格式：支持 JSON 和人类可读的控制台（文本）格式。)
+  - Configurable Output Formats: Supports JSON, human-readable console (text), and key=value formats.
+    (可配置的输出格式：支持 JSON、人类可读的控制台（文本）以及 key=value 格式。)
   - Multiple Output Paths: Can write logs to stdout, stderr, and one or more files simultaneously.
     (多输出路径：可以同时将日志写入 stdout、stderr 以及一个或多个文件。)
   - Log Rotation: Built-in support for log rotation based on size, age, and number of backups, with optional compression.
@@ -53,10 +53,11 @@ Basic Usage with Global Logger:
 	func main() {
 		// 1. Initialize the global logger (usually once at application startup)
 		// (1. 初始化全局记录器（通常在应用程序启动时执行一次）)
-		opts := log.NewOptions()
-		opts.Level = "debug" // Set desired level (设置所需级别)
-		opts.Format = log.FormatText // Use text format for console (控制台使用文本格式)
-		opts.EnableColor = true     // Enable color for readability (启用颜色以提高可读性)
+			opts := log.NewOptions()
+	opts.Level = "debug" // Set desired level (设置所需级别)
+	opts.Format = log.FormatText // Use text format for console (控制台使用文本格式)
+	// opts.Format = log.FormatKeyValue // Alternative: use key=value format (可选：使用 key=value 格式)
+	opts.EnableColor = true     // Enable color for readability (启用颜色以提高可读性)
 		log.Init(opts)
 
 		// Ensure logs are flushed before application exits
@@ -87,6 +88,12 @@ Basic Usage with Global Logger:
 		log.Ctx(ctx, "Processing incoming request with context.")
 		log.Ctxf(ctx, "User %s performed action %s.", "user123", "update_profile")
 		log.Ctxw(ctx, "Order processed", "order_id", "order-456", "customer_id", "cust-789")
+
+		// Additional context-aware logging methods (额外的上下文感知日志方法)
+		log.CtxDebugf(ctx, "Debug message with context: %s", "debug_info")
+		log.CtxInfof(ctx, "Info message with context: %s", "info_data")
+		log.CtxWarnf(ctx, "Warning message with context: %s", "warning_details")
+		log.CtxErrorf(ctx, "Error message with context: %s", "error_details")
 	}
 
 Creating and Using a Local Logger Instance:
@@ -100,12 +107,17 @@ Creating and Using a Local Logger Instance:
 		opts.Level = "info"
 		opts.OutputPaths = []string{"./my-component.log"}
 		opts.Format = log.FormatJSON
+		// opts.Format = log.FormatKeyValue // Alternative: use key=value format (可选：使用 key=value 格式)
 		logger := log.NewLogger(opts)
 		defer func() { _ = logger.Sync() }() // Sync this specific logger instance (同步此特定的记录器实例)
 
 		logger.Info("Component initialized.")
 		// ... component logic ...
 		logger.Warnw("Potential issue detected", "issue_code", 1001)
+
+		// Using WithValues for structured context (使用 WithValues 添加结构化上下文)
+		contextLogger := logger.WithValues("component", "my-component", "version", "1.0.0")
+		contextLogger.Info("Component operation completed")
 	}
 
 Integration with pkg/config for Hot-Reloading:
@@ -148,6 +160,31 @@ In your main setup:
 Now, when the "log" section of your configuration file changes, the global logger
 will be automatically reconfigured.
 (现在，当配置文件的 "log" 部分发生更改时，全局记录器将自动重新配置。)
+
+Key=Value Format Usage:
+(Key=Value 格式使用方法：)
+
+The log package supports a special key=value output format that's particularly useful for
+log aggregation systems and human-readable structured logs.
+(日志包支持特殊的 key=value 输出格式，这对于日志聚合系统和人类可读的结构化日志特别有用。)
+
+	opts := log.NewOptions()
+	opts.Format = log.FormatKeyValue
+	opts.Level = "info"
+	log.Init(opts)
+
+	// Basic logging with key=value format (基本的 key=value 格式日志记录)
+	log.Infow("User login successful", "user_id", "12345", "ip", "192.168.1.1")
+	// Output: 2024-01-15T10:30:45Z INFO User login successful user_id=12345 ip=192.168.1.1
+
+	// Using WithValues for persistent context (使用 WithValues 添加持久上下文)
+	userLogger := log.WithValues("user_id", "12345", "session", "sess_abc123")
+	userLogger.Info("User performed action")
+	// Output: 2024-01-15T10:30:46Z INFO User performed action user_id=12345 session=sess_abc123
+
+	// Values with spaces are automatically quoted (包含空格的值会自动加引号)
+	log.Infow("System status", "message", "all systems operational", "uptime", "24h")
+	// Output: 2024-01-15T10:30:47Z INFO System status message="all systems operational" uptime=24h
 */
 package log
 

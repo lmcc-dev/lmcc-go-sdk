@@ -35,7 +35,8 @@ func TestFileOutputJSON(t *testing.T) {
 	opts.Format = log.FormatJSON
 	opts.Level = zapcore.DebugLevel.String()
 
-	logger := log.NewLogger(opts)
+	logger, errLogger := log.NewLogger(opts) // 处理两个返回值
+	localRequire.NoError(errLogger)       // 检查错误
 	localRequire.NotNil(logger)
 
 	// 写入日志 (Write logs)
@@ -78,7 +79,8 @@ func TestFileOutputText(t *testing.T) {
 	opts.EnableColor = false // Disable color for easier string matching
 	opts.Level = zapcore.InfoLevel.String()
 
-	logger := log.NewLogger(opts)
+	logger, errLogger := log.NewLogger(opts) // 处理两个返回值
+	localRequire.NoError(errLogger)       // 检查错误
 	localRequire.NotNil(logger)
 
 	logger.Info("Info message text")
@@ -117,7 +119,8 @@ func TestFileOutputMulti(t *testing.T) {
 	opts.Format = log.FormatJSON             
 	opts.Level = zapcore.InfoLevel.String()
 
-	logger := log.NewLogger(opts)
+	logger, errLogger := log.NewLogger(opts) // 处理两个返回值
+	localRequire.NoError(errLogger)       // 检查错误
 	localRequire.NotNil(logger)
 
 	logger.Info("Multi output info")

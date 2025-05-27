@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	// lmccerrors
+	stdErrors "errors" // Standard library errors for IsCode replacement
+
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,7 +157,9 @@ func TestLoadConfigAndWatch_ErrorPaths(t *testing.T) {
 
 		_, err := LoadConfigAndWatch(&loadedCfg, WithConfigFile(configFile, "yaml"))
 		require.Error(t, err, "Should return error for invalid YAML content")
-		assert.Contains(t, err.Error(), "failed to read config file", "Error message should indicate config file read failure")
+		// assert.Contains(t, err.Error(), "failed to read config file", "Error message should indicate config file read failure")
+		assert.True(t, stdErrors.Is(err, lmccerrors.ErrConfigFileRead), "Error code should be ErrConfigFileRead for invalid content")
+		assert.Contains(t, err.Error(), lmccerrors.ErrConfigFileRead.String(), "Error message should contain the coder string")
 	})
 
 	// --- Test Config File Type Mismatch ---
@@ -169,7 +175,9 @@ func TestLoadConfigAndWatch_ErrorPaths(t *testing.T) {
 		_, err := LoadConfigAndWatch(&loadedCfg, WithConfigFile(configFile, "toml"))
 		require.Error(t, err, "Should return error for file type mismatch")
 		// Error might manifest during ReadInConfig or Unmarshal, check for relevant parts
-		assert.Contains(t, err.Error(), "failed to read config file", "Error message likely indicates read failure due to type mismatch")
+		// assert.Contains(t, err.Error(), "failed to read config file", "Error message likely indicates read failure due to type mismatch")
+		assert.True(t, stdErrors.Is(err, lmccerrors.ErrConfigFileRead), "Error code should be ErrConfigFileRead for type mismatch")
+		assert.Contains(t, err.Error(), lmccerrors.ErrConfigFileRead.String(), "Error message should contain the coder string")
 	})
 
 	// --- Test Hot Reload with Read Error ---

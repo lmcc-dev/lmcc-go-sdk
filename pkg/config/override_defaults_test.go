@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	stdErrors "errors" // Standard library errors aliased for use
+
+	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -179,11 +182,15 @@ func TestLoadConfig_FileNotFound(t *testing.T) {
 	// as it should fall back to defaults/env vars. It should print a message though.
 	// We can't easily capture stdout here without more complex setup, so we just check the error.
 	err := LoadConfig(&loadedCfg, WithConfigFile(nonExistentPath, "yaml"))
-	require.NoError(t, err, "LoadConfig should not return error when config file is not found")
+	assert.Error(t, err, "LoadConfig should return an error when config file is not found")
+	if err != nil {
+		assert.True(t, stdErrors.Is(err, lmccerrors.ErrConfigFileRead), "Error should be ErrConfigFileRead")
+	}
 
-	// Assert: Check if defaults are loaded correctly (similar to TestLoadConfig_Defaults)
-	require.NotNil(t, loadedCfg.Server, "Server config should have defaults even if file not found")
-	assert.Equal(t, 8080, loadedCfg.Server.Port) // Check one default value
-	require.NotNil(t, loadedCfg.Log, "Log config should have defaults even if file not found")
-	assert.Equal(t, "info", loadedCfg.Log.Level) // Check one default value
+	// 当 LoadConfig 因文件未找到而返回错误时，不应期望 cfg 被填充默认值。
+	// (When LoadConfig returns an error due to file not found, cfg should not be expected to be populated with defaults.)
+	// require.NotNil(t, loadedCfg.Server, "Server config should have defaults even if file not found")
+	// assert.Equal(t, 8080, loadedCfg.Server.Port) // Check one default value
+	// require.NotNil(t, loadedCfg.Log, "Log config should have defaults even if file not found")
+	// assert.Equal(t, "info", loadedCfg.Log.Level) // Check one default value
 } 
