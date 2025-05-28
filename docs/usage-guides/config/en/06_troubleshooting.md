@@ -196,7 +196,43 @@ Error: failed to load configuration: config file not found
    }
    ```
 
-### 5. Type Conversion Issues
+### 5. Default Values Overriding Configuration File Values
+
+**Problem:** Configuration values from files are being overridden by default values defined in struct tags.
+
+**Symptoms:**
+- Boolean `false` values in config files are changed to `true` if the default is `true`
+- Zero values (0, false, "") in config files are replaced by struct tag defaults
+- Configuration file appears to be ignored for certain fields
+
+**Example:**
+```yaml
+# config.yaml
+enableMetrics: false  # This gets changed to true
+```
+
+```go
+type Config struct {
+    EnableMetrics bool `mapstructure:"enableMetrics" default:"true"`
+}
+```
+
+**Root Cause:**
+The default value application logic cannot distinguish between "user explicitly set to false in config file" and "field was not set (zero value)".
+
+**Solution:**
+This issue has been fixed in the latest version through improved default value handling that:
+- Records which keys actually exist in the configuration file
+- Only applies defaults to fields that are truly unset
+- Properly handles zero values that are explicitly set by users
+
+**Workaround for older versions:**
+Use environment variables to override problematic boolean fields:
+```bash
+export APP_ENABLE_METRICS=false
+```
+
+### 6. Type Conversion Issues
 
 **Problem:** Configuration values are not properly converted to expected types.
 
@@ -250,7 +286,7 @@ Error: failed to load configuration: config file not found
    }
    ```
 
-### 6. Memory Leaks with Hot Reload
+### 7. Memory Leaks with Hot Reload
 
 **Problem:** Application memory usage increases over time with hot reload enabled.
 

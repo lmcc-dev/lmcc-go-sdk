@@ -186,6 +186,45 @@ func stringToTimeHookFunc() mapstructure.DecodeHookFunc {
 }
 ```
 
+### 问题：默认值覆盖配置文件值
+
+**错误信息：**
+```
+配置文件中设置了 enableMetrics: false，但实际加载的值是 true
+```
+
+**症状：**
+- 配置文件中的布尔值 `false` 被更改为 `true`（如果默认值是 `true`）
+- 配置文件中的零值（0、false、""）被结构体标签默认值替换
+- 配置文件看似被忽略了某些字段
+
+**示例：**
+```yaml
+# config.yaml
+enableMetrics: false  # 这个值被改为了 true
+```
+
+```go
+type Config struct {
+    EnableMetrics bool `mapstructure:"enableMetrics" default:"true"`
+}
+```
+
+**根本原因：**
+默认值应用逻辑无法区分"用户在配置文件中显式设置为 false"和"字段未设置（零值）"。
+
+**解决方案：**
+此问题已在最新版本中通过改进的默认值处理逻辑得到修复：
+- 记录配置文件中实际存在的键
+- 只对真正未设置的字段应用默认值
+- 正确处理用户显式设置的零值
+
+**旧版本的解决方法：**
+使用环境变量覆盖有问题的布尔字段：
+```bash
+export APP_ENABLE_METRICS=false
+```
+
 ### 问题：默认值未应用
 
 **错误信息：**

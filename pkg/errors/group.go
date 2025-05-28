@@ -82,7 +82,7 @@ func (eg *ErrorGroup) Error() string {
 		if eg.message != "" {
 			return eg.message // Return just the group message if no errors but message exists
 		}
-		return "no errors in group" // (组内没有错误)
+		return "no errors" // (没有错误)
 	}
 
 	var b strings.Builder

@@ -54,7 +54,7 @@ func TestNewErrorGroup(t *testing.T) {
 			t.Errorf("Expected new group to have 0 errors, got %d", len(eg.Errors()))
 		}
 		// Default message when empty and Error() is called
-		if eg.Error() != "no errors in group" {
+		if eg.Error() != "no errors" {
 			t.Errorf("Expected default empty message, got %q", eg.Error())
 		}
 	})
@@ -123,7 +123,7 @@ func TestErrorGroup_Error(t *testing.T) {
 			name:            "NoErrors_NoGroupMessage",
 			groupMsg:        "",
 			errsToAdd:       []error{},
-			wantErrorString: "no errors in group",
+			wantErrorString: "no errors",
 		},
 		{
 			name:            "NoErrors_WithGroupMessage",
@@ -310,7 +310,7 @@ func (e *mockErrorWithFormatter) Format(s fmt.State, verb rune) {
 		}
 		fallthrough
 	case 's', 'q':
-		fmt.Fprintf(s, e.msg)
+		fmt.Fprintf(s, "%s", e.msg)
 	}
 }
 

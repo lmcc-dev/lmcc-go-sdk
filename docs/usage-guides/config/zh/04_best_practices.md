@@ -71,7 +71,7 @@ type AppConfig struct {
 
 ### 2. 使用有意义的默认值
 
-提供适用于开发的合理默认值：
+提供适用于开发的合理默认值，并了解默认值与配置文件的交互方式：
 
 ```go
 type DatabaseConfig struct {
@@ -90,6 +90,13 @@ type DatabaseConfig struct {
     // 更好：对敏感数据使用环境变量
     Password string `mapstructure:"password" default:"${DB_PASSWORD}"`
 }
+```
+
+**关于默认值的重要说明：**
+- 默认值只在配置文件中不存在该字段时应用
+- 配置文件中显式设置的零值（如 `false`、`0`、`""`）不会被默认值覆盖
+- 对于可能需要显式设置为 `false` 的布尔标志，如果零值行为有问题，考虑使用指针或自定义类型
+- 环境变量可以覆盖配置文件值和默认值
 ```
 
 ### 3. 使用适当的数据类型

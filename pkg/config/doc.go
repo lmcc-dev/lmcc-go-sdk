@@ -18,8 +18,9 @@ Key features include:
 
   - Loading configuration from multiple sources with a clear precedence order.
     (从多个来源加载配置，具有明确的优先级顺序。)
-  - Setting default values using struct field tags (`default:"value"`).
-    (使用结构体字段标签 (`default:"value"`) 设置默认值。)
+  - Setting default values using struct field tags (`default:"value"`), with proper handling
+    to ensure config file values are not overridden by defaults.
+    (使用结构体字段标签 (`default:"value"`) 设置默认值，并正确处理以确保配置文件的值不会被默认值覆盖。)
   - Automatic binding of environment variables to struct fields (respecting prefixes and `mapstructure` tags).
     (自动将环境变量绑定到结构体字段（遵循前缀和 `mapstructure` 标签）。)
   - Optional hot-reloading of configuration files upon changes, allowing dynamic reconfiguration.

@@ -101,11 +101,11 @@ var (
 
 	// ErrConfigFileRead represents an error encountered while reading a configuration file.
 	// ErrConfigFileRead 表示读取配置文件时遇到的错误。
-	ErrConfigFileRead = NewCoder(200001, 500, "Config file read error", "")
+	ErrConfigFileRead = NewCoder(200001, 500, "Config file read error", "https://lmcc-go-sdk.dev/docs/errors/config#file-read")
 
 	// ErrConfigSetup represents an error encountered during configuration setup.
 	// ErrConfigSetup 表示配置设置过程中遇到的错误。
-	ErrConfigSetup = NewCoder(200002, 500, "Config setup error", "")
+	ErrConfigSetup = NewCoder(200002, 500, "Config setup error", "https://lmcc-go-sdk.dev/docs/errors/config#setup")
 
 	// ErrConfigEnvBind represents an error encountered during environment variable binding for configuration.
 	// ErrConfigEnvBind 表示配置的环境变量绑定过程中遇到的错误。

@@ -21,7 +21,6 @@ import (
 	"github.com/google/uuid"
 	lmccLog "github.com/lmcc-dev/lmcc-go-sdk/pkg/log"
 
-	// "github.com/lmcc-dev/lmcc-go-sdk/pkg/known" // No longer needed as we use lmccLog.ContextWithTraceID
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,6 +55,7 @@ func TestConcurrentLoggingWithContext(t *testing.T) {
 	logOpts.OutputPaths = []string{tempLogFile, "stdout"}
 	logOpts.ErrorOutputPaths = []string{tempLogFile, "stderr"} // Also send errors to the same file and stderr (此测试也将错误发送到同一文件和标准错误)
 	logOpts.Development = false // Use production encoder for more structured logs (使用生产编码器以获得更结构化的日志)
+	logOpts.ContextKeys = []any{lmccLog.TraceIDKey, lmccLog.RequestIDKey, goroutineContextKey{}} // 配置要提取的context keys (Configure context keys to extract)
 
 	// Initialize logger
 	// 初始化记录器

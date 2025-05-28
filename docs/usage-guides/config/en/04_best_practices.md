@@ -71,7 +71,7 @@ type AppConfig struct {
 
 ### 2. Use Meaningful Default Values
 
-Provide sensible defaults that work for development:
+Provide sensible defaults that work for development, and be aware of how defaults interact with configuration files:
 
 ```go
 type DatabaseConfig struct {
@@ -90,6 +90,13 @@ type DatabaseConfig struct {
     // Better: Use environment variable for sensitive data
     Password string `mapstructure:"password" default:"${DB_PASSWORD}"`
 }
+```
+
+**Important Notes about Default Values:**
+- Default values only apply when the field is not present in the configuration file
+- Zero values explicitly set in config files (like `false`, `0`, `""`) will NOT be overridden by defaults
+- For boolean flags that might need to be explicitly set to `false`, consider using pointers or custom types if the zero value behavior is problematic
+- Environment variables can override both config file values and defaults
 ```
 
 ### 3. Use Appropriate Data Types

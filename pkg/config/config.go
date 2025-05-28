@@ -81,6 +81,7 @@ func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
 
 	// 3. 设置并读取配置文件 (Set and read the config file)
 	configFileUsed := ""
+	var keysFromConfigFile map[string]bool // 记录配置文件中实际存在的键 (Record keys actually present in config file)
 	if cm.options.configFilePath != "" {
 		cm.v.SetConfigFile(cm.options.configFilePath)
 		if cm.options.configFileType == "" {
@@ -114,9 +115,13 @@ func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
 		} else {
 			configFileUsed = cm.options.configFilePath
 			log.Printf("Info: Successfully read config file '%s'.", configFileUsed)
+			
+			// 记录配置文件中实际存在的键 (Record keys actually present in config file)
+			keysFromConfigFile = flattenViperKeys(cm.v.AllSettings())
 		}
 	} else {
 		log.Println("Info: No config file path provided...")
+		keysFromConfigFile = make(map[string]bool) // 空映射 (Empty map)
 	}
 
 	// 4. 从结构体标签设置 Viper 默认值 (Set Viper defaults from struct tags)
@@ -154,7 +159,9 @@ func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
 	}
 
 	// 6. 在解码后应用默认值到零值字段 (Apply defaults to zero-value fields after decoding)
-	if err := applyDefaultsToZeroFields(cm.cfg); err != nil {
+	// 使用改进版本的函数，它能够区分显式设置的值和真正的零值
+	// (Use improved version of the function that can distinguish explicitly set values from true zero values)
+	if err := applyDefaultsToZeroFieldsWithViper(cm.cfg, cm.v, keysFromConfigFile); err != nil {
 		return nil, lmccerrors.WithCode(
 			lmccerrors.Wrap(err, "failed to apply defaults to zero fields after initial load"),
 			lmccerrors.ErrConfigSetup,
@@ -208,7 +215,11 @@ func LoadConfigAndWatch[T any](cfg *T, opts ...Option) (Manager, error) {
 			}
 
 			// 在热重载解码后应用默认值 (Apply defaults after hot reload decoding)
-			if errApplyDefaults := applyDefaultsToZeroFields(cm.cfg); errApplyDefaults != nil {
+			// 使用改进版本的函数，它能够区分显式设置的值和真正的零值
+			// (Use improved version of the function that can distinguish explicitly set values from true zero values)
+			// 重新构建配置文件键映射 (Rebuild config file keys map)
+			hotReloadKeysFromConfigFile := flattenViperKeys(cm.v.AllSettings())
+			if errApplyDefaults := applyDefaultsToZeroFieldsWithViper(cm.cfg, cm.v, hotReloadKeysFromConfigFile); errApplyDefaults != nil {
 				log.Printf("Error applying defaults to zero fields during hot reload: %v", errApplyDefaults)
 				// Decide if we should skip callbacks or proceed. For now, proceed.
 			}

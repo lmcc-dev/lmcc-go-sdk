@@ -15,7 +15,7 @@ import (
 	"time"
 
 	lmccerrors "github.com/lmcc-dev/lmcc-go-sdk/pkg/errors" // SDK errors package (SDK 错误包)
-	"github.com/spf13/viper"                                // Add viper import
+	"github.com/spf13/viper"                                // Viper configuration management
 )
 
 // initializeNilPointers 递归地初始化给定结构体指针 target 内部所有为 nil 的结构体指针字段。
@@ -285,6 +285,161 @@ func parseStringToType(value string, targetType reflect.Type) (interface{}, erro
 	}
 }
 
+// applyDefaultsToZeroFieldsWithViper 递归地将结构体中带有 `default` 标签的零值字段设置为其默认值，
+// 但只有当该字段在配置文件中实际不存在时才设置。这样可以避免覆盖从配置文件显式设置的值。
+// (applyDefaultsToZeroFieldsWithViper recursively sets zero-value fields with `default` tags in a struct to their default values,
+// but only when the field doesn't actually exist in the config file. This avoids overriding values explicitly set from config files.)
+// Parameters:
+//   target: 指向要应用默认值的结构体的指针。
+//           (A pointer to the struct to apply defaults to.)
+//   v: Viper 实例，用于检查键是否存在。
+//      (Viper instance to check if keys exist.)
+//   keysFromConfigFile: 配置文件中实际存在的键的映射。
+//                       (Map of keys actually present in the config file.)
+// Returns:
+//   error: 如果解析默认标签或设置值时发生错误。
+//          (Error if parsing default tag or setting value fails.)
+func applyDefaultsToZeroFieldsWithViper(target interface{}, v *viper.Viper, keysFromConfigFile map[string]bool) error {
+	return applyDefaultsToZeroFieldsWithViperInternal(target, v, keysFromConfigFile, "")
+}
+
+// applyDefaultsToZeroFieldsWithViperInternal 是内部递归函数
+// (applyDefaultsToZeroFieldsWithViperInternal is the internal recursive function)
+func applyDefaultsToZeroFieldsWithViperInternal(target interface{}, v *viper.Viper, keysFromConfigFile map[string]bool, keyPrefix string) error {
+	val := reflect.ValueOf(target)
+
+	if val.Kind() != reflect.Ptr || val.IsNil() || val.Elem().Kind() != reflect.Struct {
+		return lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, "applyDefaultsToZeroFieldsWithViper expects a non-nil pointer to a struct")
+	}
+
+	structVal := val.Elem()
+	structType := structVal.Type()
+
+	for i := 0; i < structVal.NumField(); i++ {
+		fieldVal := structVal.Field(i)
+		fieldType := structType.Field(i)
+
+		if !fieldVal.CanSet() || !fieldType.IsExported() {
+			continue
+		}
+
+		// 获取 mapstructure 标签来构建 Viper 键
+		// (Get mapstructure tag to build Viper key)
+		mapstructureTag := fieldType.Tag.Get("mapstructure")
+		
+		// 处理嵌入字段：如果没有 mapstructure 标签且字段是匿名的，则递归处理
+		// (Handle embedded fields: if no mapstructure tag and field is anonymous, recurse)
+		if mapstructureTag == "" && fieldType.Anonymous {
+			// 对于嵌入字段，使用当前的 keyPrefix 而不是构建新的键
+			// (For embedded fields, use current keyPrefix instead of building new keys)
+			if fieldVal.Kind() == reflect.Struct && fieldVal.CanAddr() {
+				if err := applyDefaultsToZeroFieldsWithViperInternal(fieldVal.Addr().Interface(), v, keysFromConfigFile, keyPrefix); err != nil {
+					return err
+				}
+			} else if fieldVal.Kind() == reflect.Ptr && !fieldVal.IsNil() && fieldVal.Type().Elem().Kind() == reflect.Struct {
+				if err := applyDefaultsToZeroFieldsWithViperInternal(fieldVal.Interface(), v, keysFromConfigFile, keyPrefix); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		
+		if mapstructureTag == "" || mapstructureTag == "-" {
+			continue
+		}
+
+		// 构建完整的 Viper 键路径
+		// (Build complete Viper key path)
+		var fullKey string
+		if keyPrefix == "" {
+			fullKey = mapstructureTag
+		} else {
+			fullKey = keyPrefix + "." + mapstructureTag
+		}
+		
+		// Viper 将所有键转换为小写，所以我们也需要将 fullKey 转换为小写进行比较
+		// (Viper converts all keys to lowercase, so we need to convert fullKey to lowercase for comparison)
+		fullKeyLower := strings.ToLower(fullKey)
+
+		defaultTag := fieldType.Tag.Get("default")
+		isZero := fieldVal.IsZero()
+
+		// Handle pointers to structs: if nil, initialize and recurse
+		// (处理结构体指针：如果为 nil，则初始化并递归)
+		if fieldVal.Kind() == reflect.Ptr && fieldVal.Type().Elem().Kind() == reflect.Struct {
+			if fieldVal.IsNil() {
+				// Only initialize if there's a default tag anywhere within the nested struct or if the pointer field itself has a default.
+				// (仅当嵌套结构体内部任何位置有默认标签，或者指针字段本身有默认值时才初始化。)
+				hasAnyDefault := defaultTag != "" || hasDefaultsDefined(fieldVal.Type().Elem())
+				if hasAnyDefault {
+					newStructPtr := reflect.New(fieldVal.Type().Elem())
+					fieldVal.Set(newStructPtr)
+					if err := applyDefaultsToZeroFieldsWithViperInternal(fieldVal.Interface(), v, keysFromConfigFile, fullKey); err != nil {
+						return err // Propagate error from recursive call (从递归调用传播错误)
+					}
+					isZero = false // No longer considered zero for the purpose of applying a default *to the pointer itself*
+				}
+			} else {
+				// If not nil, recurse to apply defaults to its fields
+				// (如果不为 nil，则递归以将默认值应用于其字段)
+				if err := applyDefaultsToZeroFieldsWithViperInternal(fieldVal.Interface(), v, keysFromConfigFile, fullKey); err != nil {
+					return err // Propagate error
+				}
+			}
+		} else if fieldVal.Kind() == reflect.Struct && fieldVal.CanAddr() {
+			// Recurse for non-pointer struct fields to handle their nested defaults
+			// (对非指针结构体字段进行递归以处理其嵌套的默认值)
+			if err := applyDefaultsToZeroFieldsWithViperInternal(fieldVal.Addr().Interface(), v, keysFromConfigFile, fullKey); err != nil {
+				return err // Propagate error
+			}
+		}
+
+		// Apply default value if the field is zero, has a default tag, AND the key was not present in config file
+		// (如果字段为零、存在默认标签且该键在配置文件中不存在，则应用默认值)
+		if isZero && defaultTag != "" && !keysFromConfigFile[fullKeyLower] {
+			parsedVal, err := parseStringToType(defaultTag, fieldVal.Type())
+			if err != nil {
+				return lmccerrors.WithCode(
+					lmccerrors.Wrapf(err, "error parsing default tag '%s' for field '%s.%s'", defaultTag, structType.Name(), fieldType.Name),
+					lmccerrors.ErrConfigDefaultTagParse,
+				)
+			}
+
+			targetVal := reflect.ValueOf(parsedVal)
+			if fieldVal.Kind() == reflect.Ptr {
+				// If the field is a pointer, create a new pointer to the parsed value
+				// (如果字段是指针，则创建指向解析值的新指针)
+				ptr := reflect.New(fieldVal.Type().Elem())
+				// Ensure targetVal is assignable to ptr.Elem()
+				if ptr.Elem().Type() != targetVal.Type() {
+					// This can happen if parseStringToType returns, e.g., int, but field is *int64.
+					// We need to convert targetVal to the element type of the pointer.
+					if !targetVal.CanConvert(ptr.Elem().Type()) {
+						return lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, 
+							fmt.Sprintf("type mismatch: cannot convert parsed default value of type %s to field %s.%s's element type %s", 
+							targetVal.Type(), structType.Name(), fieldType.Name, ptr.Elem().Type()))
+					}
+					targetVal = targetVal.Convert(ptr.Elem().Type())
+				}
+				ptr.Elem().Set(targetVal)
+				fieldVal.Set(ptr)
+			} else {
+				// Ensure targetVal is assignable to fieldVal
+				if fieldVal.Type() != targetVal.Type() {
+					if !targetVal.CanConvert(fieldVal.Type()) {
+						return lmccerrors.NewWithCode(lmccerrors.ErrConfigInternal, 
+							fmt.Sprintf("type mismatch: cannot convert parsed default value of type %s to field %s.%s's type %s", 
+							targetVal.Type(), structType.Name(), fieldType.Name, fieldVal.Type()))
+					}
+					targetVal = targetVal.Convert(fieldVal.Type())
+				}
+				fieldVal.Set(targetVal)
+			}
+		}
+	}
+	return nil
+}
+
 // applyDefaultsToZeroFields 递归地将结构体中带有 `default` 标签的零值字段设置为其默认值。
 // 注意：此函数直接修改传入的结构体。
 // (applyDefaultsToZeroFields recursively sets zero-value fields with `default` tags in a struct to their default values.)
@@ -391,6 +546,33 @@ func applyDefaultsToZeroFields(target interface{}) error {
 		}
 	}
 	return nil
+}
+
+// flattenViperKeys 递归地将 Viper 的 AllSettings() 返回的嵌套映射扁平化为点分隔的键
+// (flattenViperKeys recursively flattens the nested map returned by Viper's AllSettings() into dot-separated keys)
+func flattenViperKeys(settings map[string]interface{}) map[string]bool {
+	result := make(map[string]bool)
+	flattenViperKeysRecursive(settings, "", result)
+	return result
+}
+
+// flattenViperKeysRecursive 是递归辅助函数
+// (flattenViperKeysRecursive is the recursive helper function)
+func flattenViperKeysRecursive(m map[string]interface{}, prefix string, result map[string]bool) {
+	for key, value := range m {
+		fullKey := key
+		if prefix != "" {
+			fullKey = prefix + "." + key
+		}
+		
+		// 记录当前键 (Record current key)
+		result[fullKey] = true
+		
+		// 如果值是嵌套映射，递归处理 (If value is nested map, recurse)
+		if nestedMap, ok := value.(map[string]interface{}); ok {
+			flattenViperKeysRecursive(nestedMap, fullKey, result)
+		}
+	}
 }
 
 // hasDefaultsDefined checks if a struct type or any of its nested struct types have default tags.
