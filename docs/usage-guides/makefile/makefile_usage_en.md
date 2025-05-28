@@ -11,6 +11,7 @@ Core goals:
 - Ensure consistency in building and testing.
 - Automate code quality checks and formatting.
 - Manage development tool dependencies.
+- Provide centralized examples management.
 
 ## 2. Common Commands
 
@@ -90,7 +91,91 @@ Starts a local `godoc` HTTP server (typically on `http://localhost:6060`) to bro
 
 Press `Ctrl+C` in the terminal to stop the server.
 
-## 3. Customization (Optional)
+## 3. Examples Management
+
+The project includes a comprehensive examples management system that allows you to build, run, test, and debug the 19 included examples across 5 categories.
+
+### Available Categories
+
+- **basic-usage**: Basic integration examples (1 example)
+- **config-features**: Configuration module demonstrations (5 examples)
+- **error-handling**: Error handling patterns (5 examples) 
+- **integration**: Full integration scenarios (3 examples)
+- **logging-features**: Logging module features (5 examples)
+
+### Examples Commands
+
+-   **`make examples-list`**
+    -   Lists all available examples with their numbers and categories.
+    -   Shows total count of examples.
+
+-   **`make examples-build`**
+    -   Builds all examples into the `_output/examples/` directory.
+    -   Each example becomes a standalone executable.
+    -   Supports parallel building for better performance.
+
+-   **`make examples-clean`**
+    -   Removes all built example binaries from `_output/examples/`.
+    -   Useful for cleaning up build artifacts.
+
+-   **`make examples-run EXAMPLE=<name>`**
+    -   Runs a specific example by name.
+    -   **Required `EXAMPLE`**: Specifies which example to run (e.g., `basic-usage`, `config-features/01-simple-config`).
+    -   Validates example existence before running.
+    -   Examples:
+        - `make examples-run EXAMPLE=basic-usage`
+        - `make examples-run EXAMPLE=config-features/01-simple-config`
+        - `make examples-run EXAMPLE=error-handling/02-error-wrapping`
+
+-   **`make examples-run-all`**
+    -   Runs all examples sequentially with progress tracking.
+    -   Shows execution status for each example.
+    -   Useful for comprehensive testing of all examples.
+
+-   **`make examples-test`**
+    -   Performs comprehensive testing of all examples:
+        - Step 1: Lints all example code using `golangci-lint`
+        - Step 2: Builds all examples to verify compilation
+    -   Ensures code quality and buildability of examples.
+
+-   **`make examples-debug EXAMPLE=<name>`**
+    -   Starts an interactive debugging session for a specific example using `delve`.
+    -   **Required `EXAMPLE`**: Specifies which example to debug.
+    -   Automatically installs `dlv` if not present.
+    -   Shows helpful debugger commands on start.
+    -   Examples:
+        - `make examples-debug EXAMPLE=basic-usage`
+        - `make examples-debug EXAMPLE=config-features/02-hot-reload`
+
+-   **`make examples-analyze`**
+    -   Provides comprehensive analysis of the examples structure:
+        - Directory tree visualization
+        - Statistics by category
+        - Code metrics (total lines, Go files count)
+    -   Useful for understanding project structure and scope.
+
+-   **`make examples-category CATEGORY=<name>`**
+    -   Runs all examples within a specific category.
+    -   **Required `CATEGORY`**: Specifies which category to run.
+    -   Available categories: `basic-usage`, `config-features`, `error-handling`, `integration`, `logging-features`
+    -   Examples:
+        - `make examples-category CATEGORY=config-features`
+        - `make examples-category CATEGORY=error-handling`
+
+-   **`make examples`**
+    -   Default examples target that runs `examples-test`.
+    -   Equivalent to running lint and build verification for all examples.
+
+### Examples Usage Tips
+
+1. **Start with listing**: Use `make examples-list` to see all available examples.
+2. **Run individual examples**: Use `make examples-run EXAMPLE=<name>` to test specific functionality.
+3. **Category exploration**: Use `make examples-category CATEGORY=<name>` to explore related examples.
+4. **Development workflow**: Use `make examples-test` to ensure all examples are working before commits.
+5. **Debugging**: Use `make examples-debug EXAMPLE=<name>` when you need to step through example code.
+
+## 4. Customization (Optional)
 
 -   **Adding Tools**: Edit `scripts/make-rules/tools.mk` to add new tools to `TOOLS_REQUIRED` and provide corresponding `install.<toolname>` rules.
--   **Verbose Output**: Run any command with `V=1` for more detailed output (e.g., `make test V=1`). 
+-   **Verbose Output**: Run any command with `V=1` for more detailed output (e.g., `make test V=1`).
+-   **Adding Examples**: Create new examples in the `examples/` directory with a `main.go` file, and they will automatically be detected by the examples management system. 

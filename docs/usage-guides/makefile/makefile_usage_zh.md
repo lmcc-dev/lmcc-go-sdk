@@ -11,6 +11,7 @@
 - 确保构建和测试的一致性。
 - 自动化代码质量检查和格式化。
 - 管理开发工具依赖。
+- 提供集中化的示例管理。
 
 ## 2. 常用命令
 
@@ -76,11 +77,6 @@
 -   **`make tools.help`**
     -   显示工具管理策略的详细帮助和使用示例。
 
-## 3. 自定义 (可选)
-
--   **添加工具**: 编辑 `scripts/make-rules/tools.mk` 文件，将新工具添加到 `TOOLS_REQUIRED` 变量中，并提供相应的 `install.<toolname>` 规则。
--   **详细输出**: 运行任何命令时加上 `V=1` 可以获取更详细的输出（例如 `make test V=1`）。 
-
 ### `make doc-view PKG=./path/to/package`
 
 在终端中显示指定包的 Go 文档。`PKG` 变量是**必需的**。
@@ -93,4 +89,93 @@
 
 启动一个本地 `godoc` HTTP 服务器（通常在 `http://localhost:6060`），用于在浏览器中浏览 Go 工作区中所有包的 HTML 文档，包括您当前的项目。如果 `godoc` 工具尚未安装，它会自动安装。
 
-在终端中按 `Ctrl+C` 来停止服务。 
+在终端中按 `Ctrl+C` 来停止服务。
+
+## 3. 示例管理
+
+本项目包含一个全面的示例管理系统，允许您构建、运行、测试和调试 5 个分类中的 19 个示例。
+
+### 可用分类
+
+- **basic-usage**: 基础集成示例（1 个示例）
+- **config-features**: 配置模块演示（5 个示例）
+- **error-handling**: 错误处理模式（5 个示例）
+- **integration**: 完整集成场景（3 个示例）
+- **logging-features**: 日志模块功能（5 个示例）
+
+### 示例命令
+
+-   **`make examples-list`**
+    -   列出所有可用示例及其编号和分类。
+    -   显示示例总数。
+
+-   **`make examples-build`**
+    -   将所有示例构建到 `_output/examples/` 目录中。
+    -   每个示例都成为一个独立的可执行文件。
+    -   支持并行构建以获得更好的性能。
+
+-   **`make examples-clean`**
+    -   从 `_output/examples/` 中删除所有构建的示例二进制文件。
+    -   用于清理构建产物。
+
+-   **`make examples-run EXAMPLE=<名称>`**
+    -   按名称运行特定示例。
+    -   **必需的 `EXAMPLE`**: 指定要运行的示例（例如 `basic-usage`, `config-features/01-simple-config`）。
+    -   运行前验证示例是否存在。
+    -   示例：
+        - `make examples-run EXAMPLE=basic-usage`
+        - `make examples-run EXAMPLE=config-features/01-simple-config`
+        - `make examples-run EXAMPLE=error-handling/02-error-wrapping`
+
+-   **`make examples-run-all`**
+    -   顺序运行所有示例并显示进度跟踪。
+    -   显示每个示例的执行状态。
+    -   用于全面测试所有示例。
+
+-   **`make examples-test`**
+    -   对所有示例执行全面测试：
+        - 步骤 1：使用 `golangci-lint` 检查所有示例代码
+        - 步骤 2：构建所有示例以验证编译
+    -   确保示例的代码质量和可构建性。
+
+-   **`make examples-debug EXAMPLE=<名称>`**
+    -   使用 `delve` 为特定示例启动交互式调试会话。
+    -   **必需的 `EXAMPLE`**: 指定要调试的示例。
+    -   如果不存在会自动安装 `dlv`。
+    -   启动时显示有用的调试器命令。
+    -   示例：
+        - `make examples-debug EXAMPLE=basic-usage`
+        - `make examples-debug EXAMPLE=config-features/02-hot-reload`
+
+-   **`make examples-analyze`**
+    -   提供示例结构的全面分析：
+        - 目录树可视化
+        - 按分类统计
+        - 代码指标（总行数、Go 文件数）
+    -   用于理解项目结构和范围。
+
+-   **`make examples-category CATEGORY=<名称>`**
+    -   运行特定分类中的所有示例。
+    -   **必需的 `CATEGORY`**: 指定要运行的分类。
+    -   可用分类：`basic-usage`, `config-features`, `error-handling`, `integration`, `logging-features`
+    -   示例：
+        - `make examples-category CATEGORY=config-features`
+        - `make examples-category CATEGORY=error-handling`
+
+-   **`make examples`**
+    -   运行 `examples-test` 的默认示例目标。
+    -   相当于对所有示例运行 lint 和构建验证。
+
+### 示例使用技巧
+
+1. **从列表开始**: 使用 `make examples-list` 查看所有可用示例。
+2. **运行单个示例**: 使用 `make examples-run EXAMPLE=<名称>` 测试特定功能。
+3. **分类探索**: 使用 `make examples-category CATEGORY=<名称>` 探索相关示例。
+4. **开发工作流**: 使用 `make examples-test` 确保所有示例在提交前正常工作。
+5. **调试**: 当需要逐步调试示例代码时，使用 `make examples-debug EXAMPLE=<名称>`。
+
+## 4. 自定义 (可选)
+
+-   **添加工具**: 编辑 `scripts/make-rules/tools.mk` 文件，将新工具添加到 `TOOLS_REQUIRED` 变量中，并提供相应的 `install.<toolname>` 规则。
+-   **详细输出**: 运行任何命令时加上 `V=1` 可以获取更详细的输出（例如 `make test V=1`）。
+-   **添加示例**: 在 `examples/` 目录中创建包含 `main.go` 文件的新示例，它们将自动被示例管理系统检测到。 
