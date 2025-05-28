@@ -184,6 +184,120 @@ doc-serve: tools.verify.godoc ## Serve HTML documentation locally (godoc -http=:
 # End Documentation Targets
 # ==============================================================================
 
+# ==============================================================================
+# Examples Management Targets
+# ==============================================================================
+
+# EXAMPLES_DIR :: Examples directory path
+EXAMPLES_DIR := examples
+# EXAMPLES_OUTPUT_DIR :: Build output directory for examples
+EXAMPLES_OUTPUT_DIR := $(OUTPUT_DIR)/examples
+
+# Get all example directories with main.go
+EXAMPLE_DIRS := $(shell find $(EXAMPLES_DIR) -name "main.go" -type f | xargs dirname | sort)
+# Get all example names for convenience
+EXAMPLE_NAMES := $(shell find $(EXAMPLES_DIR) -name "main.go" -type f | xargs dirname | sed 's|$(EXAMPLES_DIR)/||g' | sort)
+
+# examples-list: List all available examples
+.PHONY: examples-list
+examples-list: ## List all available examples
+	@echo "===========> Available Examples:"
+	@echo "$(EXAMPLE_NAMES)" | tr ' ' '\n' | nl -v 1 -s '. '
+	@echo ""
+	@echo "Total: $(words $(EXAMPLE_NAMES)) examples"
+
+# examples-build: Build all examples
+.PHONY: examples-build
+examples-build: ## Build all examples into $(EXAMPLES_OUTPUT_DIR)
+	@./scripts/examples-build.sh $(EXAMPLES_DIR) $(EXAMPLES_OUTPUT_DIR)
+
+# examples-clean: Clean examples build output
+.PHONY: examples-clean
+examples-clean: ## Clean examples build output
+	@echo "===========> Cleaning examples build output..."
+	@rm -rf $(EXAMPLES_OUTPUT_DIR)
+	@echo "===========> Examples build output cleaned!"
+
+# examples-run: Run a specific example
+.PHONY: examples-run
+examples-run: ## Run a specific example. Usage: make examples-run EXAMPLE=basic-usage
+	@[ -n "$(EXAMPLE)" ] || ( echo "ERROR: 'make examples-run' requires EXAMPLE variable. Use: make examples-run EXAMPLE=basic-usage"; echo "Available examples:"; echo "$(EXAMPLE_NAMES)" | tr ' ' '\n' | nl -v 1 -s '. '; exit 1 )
+	@example_dir=$(EXAMPLES_DIR)/$(EXAMPLE); \
+	if [ ! -d "$$example_dir" ]; then \
+		echo "ERROR: Example '$(EXAMPLE)' not found in $$example_dir"; \
+		echo "Available examples:"; \
+		echo "$(EXAMPLE_NAMES)" | tr ' ' '\n' | nl -v 1 -s '. '; \
+		exit 1; \
+	fi; \
+	if [ ! -f "$$example_dir/main.go" ]; then \
+		echo "ERROR: main.go not found in $$example_dir"; \
+		exit 1; \
+	fi
+	@echo "===========> Running example: $(EXAMPLE)"
+	@echo "Working directory: $(EXAMPLES_DIR)/$(EXAMPLE)"
+	@cd $(EXAMPLES_DIR)/$(EXAMPLE) && $(GO) run main.go
+
+# examples-run-all: Run all examples sequentially
+.PHONY: examples-run-all
+examples-run-all: ## Run all examples sequentially
+	@./scripts/examples-run-all.sh $(EXAMPLES_DIR)
+
+# examples-test: Test all examples (lint + build)
+.PHONY: examples-test
+examples-test: ## Test all examples (lint + build verification)
+	@echo "===========> Testing all examples..."
+	@echo "Step 1: Linting examples..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run $(EXAMPLES_DIR)/.../ --timeout=5m; \
+	else \
+		echo "WARNING: golangci-lint not found, skipping lint check"; \
+	fi
+	@echo "Step 2: Building examples..."
+	@$(MAKE) examples-build
+	@echo "===========> All examples tested successfully!"
+
+# examples-debug: Debug a specific example with delve
+.PHONY: examples-debug
+examples-debug: tools.verify.dlv ## Debug a specific example with delve. Usage: make examples-debug EXAMPLE=basic-usage
+	@[ -n "$(EXAMPLE)" ] || ( echo "ERROR: 'make examples-debug' requires EXAMPLE variable. Use: make examples-debug EXAMPLE=basic-usage"; echo "Available examples:"; echo "$(EXAMPLE_NAMES)" | tr ' ' '\n' | nl -v 1 -s '. '; exit 1 )
+	@example_dir=$(EXAMPLES_DIR)/$(EXAMPLE); \
+	if [ ! -d "$$example_dir" ]; then \
+		echo "ERROR: Example '$(EXAMPLE)' not found in $$example_dir"; \
+		echo "Available examples:"; \
+		echo "$(EXAMPLE_NAMES)" | tr ' ' '\n' | nl -v 1 -s '. '; \
+		exit 1; \
+	fi; \
+	if [ ! -f "$$example_dir/main.go" ]; then \
+		echo "ERROR: main.go not found in $$example_dir"; \
+		exit 1; \
+	fi
+	@echo "===========> Starting debugger for example: $(EXAMPLE)"
+	@echo "Working directory: $(EXAMPLES_DIR)/$(EXAMPLE)"
+	@echo "Debugger commands:"
+	@echo "  b main.main    - Set breakpoint at main function"
+	@echo "  c              - Continue execution"
+	@echo "  n              - Next line"
+	@echo "  s              - Step into"
+	@echo "  l              - List source code"
+	@echo "  p <var>        - Print variable"
+	@echo "  q              - Quit debugger"
+	@echo "---"
+	@cd $(EXAMPLES_DIR)/$(EXAMPLE) && dlv debug main.go
+
+# examples-analyze: Analyze examples (dependencies, metrics)
+.PHONY: examples-analyze
+examples-analyze: ## Analyze examples (dependencies, build size, etc.)
+	@./scripts/examples-analyze.sh $(EXAMPLES_DIR)
+
+# examples-category: Run all examples in a specific category
+.PHONY: examples-category
+examples-category: ## Run all examples in a category. Usage: make examples-category CATEGORY=config-features
+	@./scripts/examples-category.sh $(EXAMPLES_DIR) $(CATEGORY)
+
+# ==============================================================================
+# End Examples Management Targets
+# ==============================================================================
+
 # clean: Remove build artifacts.
 .PHONY: clean
 clean: ## Remove all files generated by the build.
@@ -195,17 +309,29 @@ clean: ## Remove all files generated by the build.
 # help: Show this help message.
 .PHONY: help
 help: Makefile ## Show this help message.
-	@printf "\\nUsage: make <TARGETS> [PKG=./path/to/package]\\n\\nTargets:\\n"
-	@sed -n 's/^##//p' $< | column -t -s ':' | sed -e 's/^/ /'
-	@printf "\\nPKG Variable:\\n"
-	@printf "  Used with 'test-unit', 'cover', and 'cover-func' to specify a target package.\\n"
-	@printf "  If not provided for 'test-unit' or 'cover', it runs on all unit test packages.\\n"
-	@printf "  Example: make test-unit PKG=./pkg/log\\n\\n"
+	@printf "\nUsage: make <TARGETS> [PKG=./path/to/package]\n\nTargets:\n"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $< | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-25s %s\n", $$1, $$2}'
+	@printf "\nPKG Variable:\n"
+	@printf "  Used with 'test-unit', 'cover', and 'cover-func' to specify a target package.\n"
+	@printf "  If not provided for 'test-unit' or 'cover', it runs on all unit test packages.\n"
+	@printf "  Example: make test-unit PKG=./pkg/log\n\n"
+	@printf "\nEXAMPLE Variable:\n"
+	@printf "  Used with 'examples-run' and 'examples-debug' to specify a target example.\n"
+	@printf "  Example: make examples-run EXAMPLE=basic-usage\n"
+	@printf "  Example: make examples-debug EXAMPLE=config-features/01-simple-config\n\n"
+	@printf "\nCATEGORY Variable:\n"
+	@printf "  Used with 'examples-category' to run all examples in a category.\n"
+	@printf "  Available categories: basic-usage, config-features, error-handling, integration, logging-features\n"
+	@printf "  Example: make examples-category CATEGORY=config-features\n\n"
 
 # tools: Install all required Go tools.
 .PHONY: tools
 tools: ## Install all required Go tools listed in tools.mk.
 	@$(MAKE) tools.install
+
+# examples: Build and test all examples (default examples target)
+.PHONY: examples
+examples: examples-test ## Build and test all examples (default examples target)
 
 # ==============================================================================
 # Removed: Tools section moved to scripts/make-rules/tools.mk
@@ -220,4 +346,4 @@ tools: ## Install all required Go tools listed in tools.mk.
 # tools.verify.golangci-lint: $(GOLANGCI_LINT) ## Verify golangci-lint is installed.
 # $(GOLANGCI_LINT):
 # 	@echo "===========> Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."
-# 	@GOBIN=$(TOOLS_BIN_DIR) $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) 
+# 	@GOBIN=$(TOOLS_BIN_DIR) $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)

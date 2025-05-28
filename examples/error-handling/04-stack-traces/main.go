@@ -300,7 +300,7 @@ func (sa *StackAnalyzer) analyzeStackDepth(err error) {
 	} else if stackLines > 10 {
 		fmt.Printf("  ⚠️  Medium stack depth (10-20 frames)\n")
 	} else {
-		fmt.Printf("  ✓ Normal stack depth (<%10 frames)\n")
+		fmt.Printf("  ✓ Normal stack depth (<10 frames)\n")
 	}
 }
 

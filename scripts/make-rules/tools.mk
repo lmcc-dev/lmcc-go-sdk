@@ -13,7 +13,11 @@ TOOLS_REQUIRED := \
 	godoc
 #	 golines # Uncomment if needed
 #	 mockgen # Example: Uncomment if needed
-#	 gotests # Example: Uncomment if needed
+#	 gotests # Uncomment if needed
+
+# Optional development tools (installed on demand)
+TOOLS_OPTIONAL := \
+	dlv
 
 # Check if asdf is available
 ASDF_AVAILABLE := $(shell command -v asdf >/dev/null 2>&1 && echo "yes" || echo "no")
@@ -83,7 +87,8 @@ tools.version: ## Show versions of all installed tools.
 	@echo "Recommended golangci-lint version: $(GOLANGCI_LINT_VERSION_DEFAULT)"
 	@echo "Current golangci-lint version: $$(golangci-lint version 2>/dev/null | head -1 || echo 'Not installed')"
 	@echo "Current goimports version: $$(goimports -h 2>&1 | head -1 || echo 'Not installed')"
-	@echo "Current godoc version: $$(godoc -h 2>&1 | head -1 || echo 'Not installed')"
+	@echo "Current godoc version: $(godoc -h 2>&1 | head -1 || echo 'Not installed')"
+	@echo "Current dlv version: $(dlv version 2>/dev/null | head -1 || echo 'Not installed')"
 	@echo ""
 	@echo "To use latest golangci-lint: make tools GOLANGCI_LINT_STRATEGY=latest"
 	@echo "To use auto-detection: make tools GOLANGCI_LINT_STRATEGY=auto"
@@ -185,6 +190,13 @@ install.goimports:
 install.godoc:
 	@echo "Installing godoc (golang.org/x/tools/cmd/godoc)..."
 	@$(GO) install golang.org/x/tools/cmd/godoc@latest
+	$(call run_asdf_reshim,golang)
+
+# install.dlv: Install Delve debugger.
+.PHONY: install.dlv
+install.dlv:
+	@echo "Installing Delve debugger (github.com/go-delve/delve/cmd/dlv)..."
+	@$(GO) install github.com/go-delve/delve/cmd/dlv@latest
 	$(call run_asdf_reshim,golang)
 
 # TODO: Add install rules for other tools as needed.
