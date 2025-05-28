@@ -1,0 +1,34 @@
+# Multiple Formats Example - TOML Configuration
+# 多格式示例 - TOML 配置
+
+[app]
+name = "Multi-Format TOML App"
+version = "1.2.0"
+environment = "development"
+debug = true
+timeout = "30s"
+tags = ["toml", "development", "microservice", "config"]
+
+[server]
+host = "127.0.0.1"
+port = 9090
+tls = false
+read_timeout = "12s"
+write_timeout = "12s"
+
+[database]
+type = "sqlite"
+host = "localhost"
+port = 0
+user = "toml_app_user"
+password = "toml_secure_password"
+database = "toml_dev.db"
+max_conns = 5
+ssl_enabled = false
+
+[features]
+enable_auth = false
+enable_metrics = true
+enable_logging = true
+enable_caching = true
+beta_features = true

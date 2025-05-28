@@ -1,0 +1,76 @@
+# Hot-Reload Configuration Example
+# 热重载配置示例
+
+# Application configuration
+# 应用配置
+app:
+  name: "Hot-Reload Demo Service"
+  version: "1.0.0"
+  environment: "development"
+  debug: true
+  timeout: "30s"
+  workers: 4
+
+# Server configuration
+# 服务器配置
+server:
+  host: "localhost"
+  port: 8080
+  read_timeout: "10s"
+  write_timeout: "10s"
+  max_header_bytes: 1048576
+
+# Feature flags
+# 功能开关
+features:
+  enable_auth: true
+  enable_metrics: true
+  enable_tracing: false
+  enable_caching: true
+  maintenance_mode: false
+
+# Rate limiting configuration
+# 限流配置
+rate_limit:
+  enabled: true
+  requests_per_second: 100
+  burst_size: 200
+  window_size: "1m"
+
+# Log configuration (from SDK)
+# 日志配置（来自SDK）
+log:
+  level: "info"
+  format: "text"
+  enableColor: true
+  development: true
+  name: "hot-reload-example"
+  outputPaths:
+    - "stdout"
+  errorOutputPaths:
+    - "stderr"
+
+# Database configuration (from SDK) 
+# 数据库配置（来自SDK）
+database:
+  type: "postgres"
+  host: "localhost"
+  port: 5432
+  user: "hot_reload_user"
+  password: "hot_reload_password"
+  dbName: "hot_reload_db"
+  maxIdleConns: 10
+  maxOpenConns: 100
+
+# Tracing configuration (from SDK)
+# 追踪配置（来自SDK）
+tracing:
+  enabled: false
+  provider: "jaeger"
+
+# Metrics configuration (from SDK)
+# 指标配置（来自SDK）
+metrics:
+  enabled: false
+  provider: "prometheus"
+  port: 9090 

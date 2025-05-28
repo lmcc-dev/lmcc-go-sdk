@@ -1,0 +1,60 @@
+# Environment Variable Override Example Configuration
+# 环境变量覆盖示例配置
+
+# Application configuration
+# 应用配置
+app:
+  name: "Config File App Name"
+  version: "1.0.0"
+  environment: "development"
+  debug: true
+  port: 8080
+  timeout: "30s"
+  max_workers: 10
+
+# Database configuration
+# 数据库配置
+database:
+  host: "localhost"
+  port: 5432
+  user: "file_user"
+  password: "file_password"  # This should be overridden by env var
+  database: "config_file_db"
+  ssl_mode: "disable"
+  max_pool_size: 20
+  idle_timeout: "5m"
+
+# Cache configuration
+# 缓存配置
+cache:
+  type: "redis"
+  host: "localhost"
+  port: 6379
+  password: ""  # Usually set via environment variable
+  database: 0
+  max_retries: 3
+  pool_size: 10
+  default_ttl: "1h"
+
+# API configuration
+# API配置
+api:
+  base_url: "https://api.development.com"
+  api_key: ""     # Should be set via environment variable
+  secret: ""      # Should be set via environment variable
+  timeout: "10s"
+  max_retries: 3
+  rate_limit_rps: 100
+
+# Log configuration (from SDK)
+# 日志配置（来自SDK）
+log:
+  level: "debug"
+  format: "text"
+  enableColor: true
+  development: true
+  name: "env-override-example"
+  outputPaths:
+    - "stdout"
+  errorOutputPaths:
+    - "stderr" 

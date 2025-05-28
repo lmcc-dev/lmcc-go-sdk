@@ -1,0 +1,52 @@
+# Simple Configuration Example
+# 简单配置示例
+
+# Application basic settings
+# 应用基础设置
+app_name: "Advanced Simple Config Example"
+version: "2.0.0"
+debug: false
+port: 9080
+timeout: "45s"
+interval: "10m"
+
+# Network settings
+# 网络设置
+allowed_ips:
+  - "127.0.0.1"
+  - "::1"
+  - "192.168.1.0/24"
+  - "10.0.0.0/8"
+
+# Feature flags
+# 功能开关
+features:
+  - "authentication"
+  - "authorization"
+  - "logging"
+  - "metrics"
+  - "tracing"
+  - "caching"
+
+# Database configuration
+# 数据库配置
+database:
+  driver: "postgresql"
+  host: "db.example.com"
+  port: 5432
+  user: "app_user"
+  database: "production_db"
+  password: "super_secure_password_123"
+  max_connections: 20
+  connect_timeout: "15s"
+  enable_ssl: true
+
+# Cache configuration
+# 缓存配置
+cache:
+  enabled: true
+  type: "redis"
+  host: "cache.example.com"
+  port: 6379
+  ttl: "2h"
+  max_memory: "256mb"

@@ -1,0 +1,39 @@
+{
+    "app": {
+        "name": "Multi-Format JSON App",
+        "version": "1.2.0",
+        "environment": "staging",
+        "debug": true,
+        "timeout": "60s",
+        "tags": [
+            "json",
+            "staging",
+            "api",
+            "rest"
+        ]
+    },
+    "server": {
+        "host": "localhost",
+        "port": 8080,
+        "tls": false,
+        "read_timeout": "10s",
+        "write_timeout": "10s"
+    },
+    "database": {
+        "type": "mysql",
+        "host": "staging-db.example.com",
+        "port": 3306,
+        "user": "json_app_user",
+        "password": "json_secure_password",
+        "database": "json_staging_db",
+        "max_conns": 25,
+        "ssl_enabled": false
+    },
+    "features": {
+        "enable_auth": true,
+        "enable_metrics": true,
+        "enable_logging": true,
+        "enable_caching": false,
+        "beta_features": true
+    }
+}

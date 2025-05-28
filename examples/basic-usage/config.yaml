@@ -1,0 +1,56 @@
+# Basic Usage Example Configuration
+# 基础用法示例配置
+
+# Application-specific configuration
+# 应用特定配置
+app:
+  name: "LMCC SDK Basic Example"
+  version: "1.0.0"
+  environment: "development"
+  timeout: "30s"
+  max_retries: 3
+
+# Server configuration (from SDK)
+# 服务器配置（来自SDK）
+server:
+  host: "localhost"
+  port: 8080
+  mode: "development"
+
+# Log configuration (from SDK)
+# 日志配置（来自SDK）
+log:
+  level: "info"
+  format: "text"
+  enableColor: true
+  development: true
+  name: "basic-example"
+  outputPaths:
+    - "stdout"
+  errorOutputPaths:
+    - "stderr"
+
+# Database configuration (from SDK)
+# 数据库配置（来自SDK）
+database:
+  type: "postgres"
+  host: "localhost"
+  port: 5432
+  user: "example_user"
+  password: "example_password"
+  dbName: "example_db"
+  maxIdleConns: 10
+  maxOpenConns: 100
+
+# Tracing configuration (from SDK)
+# 追踪配置（来自SDK）
+tracing:
+  enabled: false
+  provider: "jaeger"
+
+# Metrics configuration (from SDK)
+# 指标配置（来自SDK）
+metrics:
+  enabled: false
+  provider: "prometheus"
+  port: 9090 
