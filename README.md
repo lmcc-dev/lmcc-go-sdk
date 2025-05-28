@@ -63,6 +63,45 @@ go get github.com/lmcc-dev/lmcc-go-sdk
 | **log** | High-performance structured logging | [📖 Guide](./docs/usage-guides/log/) |
 | **errors** | Enhanced error handling with codes | [📖 Guide](./docs/usage-guides/errors/) |
 
+## Development Tools
+
+This project includes a comprehensive Makefile for development workflows and examples management.
+
+### Quick Commands
+
+```bash
+# Development workflow
+make help              # Show all available commands
+make all               # Format, lint, test, and tidy (recommended before commits)
+make format            # Format Go source code
+make lint              # Run code linters
+make test-unit         # Run unit tests
+make cover             # Generate coverage reports
+
+# Examples management (19 examples across 5 categories)
+make examples-list                        # List all available examples
+make examples-run EXAMPLE=basic-usage    # Run a specific example
+make examples-test                       # Test all examples
+make examples-build                      # Build all examples
+make examples-debug EXAMPLE=basic-usage  # Debug with delve
+
+# Documentation
+make doc-serve         # Start local documentation server
+make doc-view PKG=./pkg/log  # View package docs in terminal
+```
+
+### Examples Categories
+
+The project includes **19 practical examples** across **5 categories**:
+
+- **basic-usage** (1): Basic integration patterns
+- **config-features** (5): Configuration management demos
+- **error-handling** (5): Error handling patterns  
+- **integration** (3): Full integration scenarios
+- **logging-features** (5): Logging capabilities
+
+**📖 Complete Makefile Documentation**: [docs/usage-guides/makefile/](./docs/usage-guides/makefile/)
+
 ## Getting Started
 
 1. **[Browse all modules](./docs/usage-guides/)** in the usage guides directory

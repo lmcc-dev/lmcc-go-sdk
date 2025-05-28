@@ -56,12 +56,68 @@ examples/
     └── README.md
 ```
 
+## Using Makefile (Recommended)
+
+The project includes a powerful Makefile system for managing all examples efficiently. Run all commands from the **root directory** of the project.
+
+### Quick Commands
+
+```bash
+# List all available examples
+make examples-list
+
+# Run a specific example
+make examples-run EXAMPLE=basic-usage
+make examples-run EXAMPLE=config-features/01-simple-config
+
+# Run all examples in a category
+make examples-category CATEGORY=config-features
+make examples-category CATEGORY=error-handling
+
+# Build all examples
+make examples-build
+
+# Test all examples (lint + build)
+make examples-test
+
+# Debug an example with delve
+make examples-debug EXAMPLE=basic-usage
+
+# Analyze examples structure
+make examples-analyze
+
+# Clean built examples
+make examples-clean
+```
+
+### Available Categories
+
+- `basic-usage`: Basic integration patterns (1 example)
+- `config-features`: Configuration management demos (5 examples)
+- `error-handling`: Error handling patterns (5 examples)
+- `integration`: Full integration scenarios (3 examples)
+- `logging-features`: Logging capabilities (5 examples)
+
+### Makefile Benefits
+
+- **Automatic Discovery**: Examples are automatically detected
+- **Parallel Building**: Fast compilation of all examples
+- **Error Handling**: Proper validation and error messages
+- **Debugging Support**: Integrated delve debugging
+- **Progress Tracking**: Clear progress indication
+
+For complete Makefile documentation, see: [docs/usage-guides/makefile/](../docs/usage-guides/makefile/)
+
 ## Quick Start
 
 ### 1. Basic Usage
 Start with the `basic-usage/` example to see how all three modules work together:
 
 ```bash
+# Using Makefile (recommended)
+make examples-run EXAMPLE=basic-usage
+
+# Or manually
 cd examples/basic-usage
 go run main.go
 ```
@@ -70,30 +126,25 @@ go run main.go
 Explore individual module features:
 
 ```bash
-# Configuration examples
-cd examples/config-features/01-simple-config
-go run main.go
+# Using Makefile - run entire category
+make examples-category CATEGORY=config-features
 
-# Error handling examples  
-cd examples/error-handling/01-basic-errors
-go run main.go
-
-# Logging examples
-cd examples/logging-features/01-basic-logging
-go run main.go
+# Or run specific examples
+make examples-run EXAMPLE=config-features/01-simple-config
+make examples-run EXAMPLE=error-handling/01-basic-errors
+make examples-run EXAMPLE=logging-features/01-basic-logging
 ```
 
 ### 3. Integration Examples
 See real-world usage patterns:
 
 ```bash
-# Web application
+# Using Makefile
+make examples-category CATEGORY=integration
+
+# Or manually
 cd examples/integration/web-app
 go run main.go
-
-# CLI tool
-cd examples/integration/cli-tool
-go run main.go --help
 ```
 
 ## Prerequisites
@@ -105,6 +156,13 @@ go run main.go --help
 
 Each example is self-contained. To run any example:
 
+### Using Makefile (Recommended)
+```bash
+# From project root
+make examples-run EXAMPLE=<example-name>
+```
+
+### Manual Method
 1. Navigate to the example directory
 2. Run `go mod tidy` (if needed)
 3. Run `go run main.go`

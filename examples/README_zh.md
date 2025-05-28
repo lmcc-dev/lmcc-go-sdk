@@ -53,12 +53,68 @@ examples/
 
 ```
 
+## 使用 Makefile（推荐）
+
+项目包含一个强大的 Makefile 系统，可以高效地管理所有示例。请从项目的**根目录**运行所有命令。
+
+### 快速命令
+
+```bash
+# 列出所有可用示例
+make examples-list
+
+# 运行特定示例
+make examples-run EXAMPLE=basic-usage
+make examples-run EXAMPLE=config-features/01-simple-config
+
+# 按分类运行所有示例
+make examples-category CATEGORY=config-features
+make examples-category CATEGORY=error-handling
+
+# 构建所有示例
+make examples-build
+
+# 测试所有示例（检查 + 构建）
+make examples-test
+
+# 使用 delve 调试示例
+make examples-debug EXAMPLE=basic-usage
+
+# 分析示例结构
+make examples-analyze
+
+# 清理构建的示例
+make examples-clean
+```
+
+### 可用分类
+
+- `basic-usage`: 基础集成模式（1 个示例）
+- `config-features`: 配置管理演示（5 个示例）
+- `error-handling`: 错误处理模式（5 个示例）
+- `integration`: 完整集成场景（3 个示例）
+- `logging-features`: 日志功能（5 个示例）
+
+### Makefile 优势
+
+- **自动发现**: 示例会自动被检测
+- **并行构建**: 快速编译所有示例
+- **错误处理**: 适当的验证和错误消息
+- **调试支持**: 集成的 delve 调试
+- **进度跟踪**: 清晰的进度指示
+
+完整的 Makefile 文档，请参见：[docs/usage-guides/makefile/](../docs/usage-guides/makefile/)
+
 ## 快速开始
 
 ### 1. 基础用法
 从 `basic-usage/` 示例开始，了解三个模块如何协同工作：
 
 ```bash
+# 使用 Makefile（推荐）
+make examples-run EXAMPLE=basic-usage
+
+# 或者手动方式
 cd examples/basic-usage
 go run main.go
 ```
@@ -67,30 +123,25 @@ go run main.go
 探索各个模块的特定功能：
 
 ```bash
-# 配置示例
-cd examples/config-features/01-simple-config
-go run main.go
+# 使用 Makefile - 运行整个分类
+make examples-category CATEGORY=config-features
 
-# 错误处理示例
-cd examples/error-handling/01-basic-errors
-go run main.go
-
-# 日志示例
-cd examples/logging-features/01-basic-logging
-go run main.go
+# 或运行特定示例
+make examples-run EXAMPLE=config-features/01-simple-config
+make examples-run EXAMPLE=error-handling/01-basic-errors
+make examples-run EXAMPLE=logging-features/01-basic-logging
 ```
 
 ### 3. 集成示例
 查看真实世界的使用模式：
 
 ```bash
-# Web应用
+# 使用 Makefile
+make examples-category CATEGORY=integration
+
+# 或者手动方式
 cd examples/integration/web-app
 go run main.go
-
-# CLI工具
-cd examples/integration/cli-tool
-go run main.go --help
 ```
 
 ## 前置要求
@@ -102,6 +153,13 @@ go run main.go --help
 
 每个示例都是独立的。运行任何示例：
 
+### 使用 Makefile（推荐）
+```bash
+# 从项目根目录
+make examples-run EXAMPLE=<示例名称>
+```
+
+### 手动方法
 1. 导航到示例目录
 2. 运行 `go mod tidy`（如需要）
 3. 运行 `go run main.go`

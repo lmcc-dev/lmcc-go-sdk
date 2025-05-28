@@ -63,6 +63,45 @@ go get github.com/lmcc-dev/lmcc-go-sdk
 | **log** | 高性能结构化日志记录 | [📖 指南](./docs/usage-guides/log/) |
 | **errors** | 增强的错误处理与错误码 | [📖 指南](./docs/usage-guides/errors/) |
 
+## 开发工具
+
+本项目包含一个用于开发工作流和示例管理的全面 Makefile。
+
+### 快速命令
+
+```bash
+# 开发工作流
+make help              # 显示所有可用命令
+make all               # 格式化、检查、测试和整理（提交前推荐）
+make format            # 格式化 Go 源代码
+make lint              # 运行代码检查器
+make test-unit         # 运行单元测试
+make cover             # 生成覆盖率报告
+
+# 示例管理（5 个分类中的 19 个示例）
+make examples-list                        # 列出所有可用示例
+make examples-run EXAMPLE=basic-usage    # 运行特定示例
+make examples-test                       # 测试所有示例
+make examples-build                      # 构建所有示例
+make examples-debug EXAMPLE=basic-usage  # 使用 delve 调试
+
+# 文档
+make doc-serve         # 启动本地文档服务器
+make doc-view PKG=./pkg/log  # 在终端查看包文档
+```
+
+### 示例分类
+
+项目包含 **19 个实用示例**，分为 **5 个分类**：
+
+- **basic-usage** (1): 基础集成模式
+- **config-features** (5): 配置管理演示
+- **error-handling** (5): 错误处理模式
+- **integration** (3): 完整集成场景
+- **logging-features** (5): 日志功能
+
+**📖 完整的 Makefile 文档**: [docs/usage-guides/makefile/](./docs/usage-guides/makefile/)
+
 ## 快速开始
 
 1. **[浏览所有模块](./docs/usage-guides/)** 在使用指南目录中
