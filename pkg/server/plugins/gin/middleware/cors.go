@@ -15,7 +15,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/server"
-	ginpkg "github.com/lmcc-dev/lmcc-go-sdk/pkg/server/plugins/gin"
 )
 
 var (
@@ -144,25 +143,21 @@ func (m *CORSMiddleware) Process(ctx server.Context, next func() error) error {
 		return next()
 	}
 
-	// 尝试获取Gin上下文 (Try to get Gin context)
-	ginCtx, ok := ctx.(*ginpkg.GinContext)
-	if !ok {
-		// 如果不是Gin上下文，直接继续 (If not Gin context, continue directly)
-		return next()
+	// 使用统一接口处理CORS (Handle CORS using unified interface)
+	origin := ctx.Request().Header.Get("Origin")
+	method := ctx.Request().Method
+
+	// 检查是否为预检请求 (Check if it's a preflight request)
+	if method == "OPTIONS" {
+		// 设置CORS头部 (Set CORS headers)
+		m.setCORSHeaders(ctx, origin)
+		return ctx.String(http.StatusNoContent, "")
 	}
 
-	// 获取原生Gin上下文 (Get native Gin context)
-	c := ginCtx.GetGinContext()
-	
-	// 处理CORS (Handle CORS)
-	m.handleCORS(c)
-	
-	// 如果被中止（预检请求或被拒绝），直接返回 (If aborted, return directly)
-	if c.IsAborted() {
-		return nil
-	}
+	// 设置CORS头部 (Set CORS headers)
+	m.setCORSHeaders(ctx, origin)
 
-	// 继续执行下一个中间件 (Continue to next middleware)
+	// 继续处理请求 (Continue processing request)
 	return next()
 }
 
@@ -183,6 +178,45 @@ func (m *CORSMiddleware) GetGinHandler() gin.HandlerFunc {
 			c.Next()
 		}
 	})
+}
+
+// setCORSHeaders 设置CORS响应头 (Set CORS response headers)
+func (m *CORSMiddleware) setCORSHeaders(ctx server.Context, origin string) {
+	// 检查源是否被允许 (Check if origin is allowed)
+	if m.isOriginAllowed(origin) {
+		ctx.SetHeader("Access-Control-Allow-Origin", origin)
+	} else if len(m.config.AllowOrigins) == 1 && m.config.AllowOrigins[0] == "*" {
+		ctx.SetHeader("Access-Control-Allow-Origin", "*")
+	}
+
+	// 设置允许的方法 (Set allowed methods)
+	methods := m.config.AllowMethods
+	if len(methods) == 0 {
+		methods = m.getDefaultMethods()
+	}
+	ctx.SetHeader("Access-Control-Allow-Methods", strings.Join(methods, ", "))
+
+	// 设置允许的头部 (Set allowed headers)
+	headers := m.config.AllowHeaders
+	if len(headers) == 0 {
+		headers = m.getDefaultHeaders()
+	}
+	ctx.SetHeader("Access-Control-Allow-Headers", strings.Join(headers, ", "))
+
+	// 设置暴露的头部 (Set exposed headers)
+	if len(m.config.ExposeHeaders) > 0 {
+		ctx.SetHeader("Access-Control-Expose-Headers", strings.Join(m.config.ExposeHeaders, ", "))
+	}
+
+	// 设置凭证支持 (Set credentials support)
+	if m.config.AllowCredentials {
+		ctx.SetHeader("Access-Control-Allow-Credentials", "true")
+	}
+
+	// 设置最大缓存时间 (Set max age)
+	if m.config.MaxAge > 0 {
+		ctx.SetHeader("Access-Control-Max-Age", m.getMaxAgeString())
+	}
 }
 
 // CORSMiddlewareFactory CORS中间件工厂函数 (CORS middleware factory function)

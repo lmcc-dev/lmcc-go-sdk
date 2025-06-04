@@ -143,6 +143,11 @@ func (c *GinContext) PostForm(key string) string {
 	return c.ginCtx.PostForm(key)
 }
 
+// GetQueryArray 获取查询参数数组 (Get query parameter array)
+func (c *GinContext) GetQueryArray(key string) []string {
+	return c.ginCtx.QueryArray(key)
+}
+
 // DefaultPostForm 获取POST表单参数，带默认值 (Get POST form parameter with default value)
 func (c *GinContext) DefaultPostForm(key, defaultValue string) string {
 	return c.ginCtx.DefaultPostForm(key, defaultValue)
@@ -182,65 +187,7 @@ func (c *GinContext) Status(code int) {
 	c.ginCtx.Status(code)
 }
 
-// GetRawData 获取原始请求数据 (Get raw request data)
-func (c *GinContext) GetRawData() ([]byte, error) {
-	return c.ginCtx.GetRawData()
-}
 
-// IsWebsocket 检查是否为WebSocket请求 (Check if it's a WebSocket request)
-func (c *GinContext) IsWebsocket() bool {
-	return c.ginCtx.IsWebsocket()
-}
-
-// ContentType 获取请求内容类型 (Get request content type)
-func (c *GinContext) ContentType() string {
-	return c.ginCtx.ContentType()
-}
-
-// GetQueryArray 获取查询参数数组 (Get query parameter array)
-func (c *GinContext) GetQueryArray(key string) []string {
-	return c.ginCtx.QueryArray(key)
-}
-
-// GetPostFormArray 获取POST表单参数数组 (Get POST form parameter array)
-func (c *GinContext) GetPostFormArray(key string) []string {
-	return c.ginCtx.PostFormArray(key)
-}
-
-// GetQueryMap 获取查询参数映射 (Get query parameter map)
-func (c *GinContext) GetQueryMap(key string) map[string]string {
-	return c.ginCtx.QueryMap(key)
-}
-
-// GetPostFormMap 获取POST表单参数映射 (Get POST form parameter map)
-func (c *GinContext) GetPostFormMap(key string) map[string]string {
-	return c.ginCtx.PostFormMap(key)
-}
-
-// Abort 中止请求处理 (Abort request processing)
-func (c *GinContext) Abort() {
-	c.ginCtx.Abort()
-}
-
-// AbortWithStatus 中止请求并设置状态码 (Abort request with status code)
-func (c *GinContext) AbortWithStatus(code int) {
-	c.ginCtx.AbortWithStatus(code)
-}
-
-// AbortWithStatusJSON 中止请求并返回JSON (Abort request with JSON response)
-func (c *GinContext) AbortWithStatusJSON(code int, jsonObj interface{}) {
-	c.ginCtx.AbortWithStatusJSON(code, jsonObj)
-}
-
-// IsAborted 检查请求是否已中止 (Check if request is aborted)
-func (c *GinContext) IsAborted() bool {
-	return c.ginCtx.IsAborted()
-}
-
-// Next 调用下一个处理器 (Call next handler)
-func (c *GinContext) Next() {
-	c.ginCtx.Next()
-}
 
 // 类型转换辅助方法 (Type conversion helper methods)
 

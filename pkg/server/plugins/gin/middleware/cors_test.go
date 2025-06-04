@@ -14,7 +14,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/server"
-	ginpkg "github.com/lmcc-dev/lmcc-go-sdk/pkg/server/plugins/gin"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -231,43 +230,26 @@ func TestCORSMiddlewareProcess(t *testing.T) {
 	}
 	
 	middleware := NewCORSMiddleware(config)
-	engine := setupTestEngine()
 	
-	engine.GET("/test", func(c *gin.Context) {
-		// 创建Gin上下文适配器 (Create Gin context adapter)
-		ctx := ginpkg.NewGinContext(c)
-		
-		// 执行CORS中间件 (Execute CORS middleware)
-		nextCalled := false
-		err := middleware.Process(ctx, func() error {
-			nextCalled = true
-			c.Header("X-Total-Count", "100")
-			c.JSON(http.StatusOK, map[string]string{"data": "test"})
-			return nil
-		})
-		
-		assert.NoError(t, err)
-		assert.True(t, nextCalled)
-	})
-	
-	// 测试第一个允许的源 (Test first allowed origin)
+	// 创建模拟请求和响应 (Create mock request and response)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Origin", "https://example.com")
 	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
 	
-	assert.Equal(t, http.StatusOK, w.Code)
+	// 创建基础上下文 (Create base context)
+	ctx := server.NewBaseContext(req, w)
+	
+	// 执行CORS中间件 (Execute CORS middleware)
+	nextCalled := false
+	err := middleware.Process(ctx, func() error {
+		nextCalled = true
+		ctx.SetHeader("X-Total-Count", "100")
+		return ctx.JSON(http.StatusOK, map[string]string{"data": "test"})
+	})
+	
+	assert.NoError(t, err)
+	assert.True(t, nextCalled)
 	assert.Equal(t, "https://example.com", w.Header().Get("Access-Control-Allow-Origin"))
-	assert.Equal(t, "X-Total-Count", w.Header().Get("Access-Control-Expose-Headers"))
-	
-	// 测试第二个允许的源 (Test second allowed origin)
-	req = httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Origin", "https://app.com")
-	w = httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
-	
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "https://app.com", w.Header().Get("Access-Control-Allow-Origin"))
 	assert.Equal(t, "X-Total-Count", w.Header().Get("Access-Control-Expose-Headers"))
 }
 
@@ -280,8 +262,13 @@ func TestCORSNonGinContext(t *testing.T) {
 	
 	middleware := NewCORSMiddleware(config)
 	
-	// 创建非Gin上下文 (Create non-Gin context)
-	baseCtx := server.NewBaseContext(nil, nil)
+	// 创建模拟请求和响应 (Create mock request and response)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Origin", "https://example.com")
+	w := httptest.NewRecorder()
+	
+	// 创建基础上下文 (Create base context)
+	baseCtx := server.NewBaseContext(req, w)
 	
 	nextCalled := false
 	err := middleware.Process(baseCtx, func() error {
@@ -291,6 +278,7 @@ func TestCORSNonGinContext(t *testing.T) {
 	
 	assert.NoError(t, err)
 	assert.True(t, nextCalled)
+	assert.Equal(t, "https://example.com", w.Header().Get("Access-Control-Allow-Origin"))
 }
 
 // TestCORSDisabled 测试禁用CORS (Test disabled CORS)

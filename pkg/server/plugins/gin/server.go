@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/server"
+	ginMiddleware "github.com/lmcc-dev/lmcc-go-sdk/pkg/server/plugins/gin/middleware"
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/server/services"
 )
 
@@ -74,6 +75,9 @@ func NewGinServerWithServices(config *server.ServerConfig, serviceContainer serv
 		routes:     make(map[string]*GinRouteGroup),
 		services:   serviceContainer,
 	}
+	
+	// 设置中间件 (Setup middleware)
+	ginServer.setupMiddleware()
 	
 	return ginServer
 }
@@ -243,6 +247,31 @@ func (s *GinServer) adaptMiddleware(middleware server.Middleware) gin.HandlerFun
 	}
 }
 
+// setupMiddleware 设置中间件 (Setup middleware)
+func (s *GinServer) setupMiddleware() {
+	// 设置恢复中间件 (Setup recovery middleware) - 使用原生实现
+	if s.config.Middleware.Recovery.Enabled {
+		if s.config.Middleware.Recovery.PrintStack {
+			s.engine.Use(gin.RecoveryWithWriter(gin.DefaultWriter))
+		} else {
+			s.engine.Use(gin.Recovery())
+		}
+	}
+
+	// 设置日志中间件 (Setup logger middleware) - 使用原生实现
+	if s.config.Middleware.Logger.Enabled {
+		s.engine.Use(gin.Logger())
+	}
+
+	// 设置CORS中间件 (Setup CORS middleware) - 使用统一实现
+	if s.config.CORS.Enabled {
+		corsMiddleware := ginMiddleware.NewCORSMiddleware(&s.config.CORS)
+		s.engine.Use(s.adaptMiddleware(corsMiddleware))
+	}
+}
+
+
+
 // applyGinConfig 应用Gin特定配置 (Apply Gin-specific configuration)
 func applyGinConfig(engine *gin.Engine, config map[string]interface{}) {
 	// 设置信任的代理 (Set trusted proxies)
@@ -265,23 +294,22 @@ func applyGinConfig(engine *gin.Engine, config map[string]interface{}) {
 		engine.HandleMethodNotAllowed = handleMethodNotAllowed
 	}
 	
-	// 设置是否通过客户端IP转发 (Set forward by client IP)
-	if forwardByClientIP, ok := config["forward_by_client_ip"].(bool); ok {
-		engine.ForwardedByClientIP = forwardByClientIP
-	}
-	
-	// 设置是否使用原始路径 (Set use raw path)
-	if useRawPath, ok := config["use_raw_path"].(bool); ok {
-		engine.UseRawPath = useRawPath
-	}
-	
-	// 设置是否转义路径值 (Set unescape path values)
-	if unescapePathValues, ok := config["unescape_path_values"].(bool); ok {
-		engine.UnescapePathValues = unescapePathValues
-	}
-	
 	// 设置最大多部分内存 (Set max multipart memory)
 	if maxMultipartMemory, ok := config["max_multipart_memory"].(int64); ok {
 		engine.MaxMultipartMemory = maxMultipartMemory
+	}
+	
+	// 设置HTML模板 (Set HTML templates)
+	if templatePattern, ok := config["template_pattern"].(string); ok && templatePattern != "" {
+		engine.LoadHTMLGlob(templatePattern)
+	}
+	
+	// 设置静态文件路径 (Set static file path)
+	if staticConfig, ok := config["static"].(map[string]interface{}); ok {
+		if relativePath, ok := staticConfig["relative_path"].(string); ok {
+			if root, ok := staticConfig["root"].(string); ok {
+				engine.Static(relativePath, root)
+			}
+		}
 	}
 }
