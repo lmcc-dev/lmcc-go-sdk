@@ -9,3 +9,10 @@ docs/development_process.md
 docs/development_process_zh.md
 .cursor/*
 _output/
+coverage.out
+
+# Temporary test files
+test_*.go
+debug_*.go
+*_debug.go
+*_test_*.go
