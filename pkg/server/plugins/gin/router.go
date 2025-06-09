@@ -167,7 +167,7 @@ func (g *GinRouteGroup) handleError(ginCtx *gin.Context, err error) {
 		logger.Errorf("Route group error: %v", err)
 		
 		// 设置错误到Gin上下文 (Set error to Gin context)
-		ginCtx.Error(err)
+		_ = ginCtx.Error(err)
 		
 		// 如果响应还没有写入，发送错误响应 (If response not written yet, send error response)
 		if !ginCtx.Writer.Written() {
@@ -178,7 +178,7 @@ func (g *GinRouteGroup) handleError(ginCtx *gin.Context, err error) {
 		}
 	} else {
 		// 回退到基本错误处理 (Fallback to basic error handling)
-		ginCtx.Error(err)
+		_ = ginCtx.Error(err)
 		if !ginCtx.Writer.Written() {
 			ginCtx.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Internal Server Error",

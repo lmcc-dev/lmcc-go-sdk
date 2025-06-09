@@ -8,8 +8,8 @@ package echo
 
 import (
 	"context"
+	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -71,7 +71,7 @@ func NewEchoServer(config *server.ServerConfig, serviceContainer services.Servic
 func (s *EchoServer) Start(ctx context.Context) error {
 	// 创建HTTP服务器 (Create HTTP server)
 	s.httpServer = &http.Server{
-		Addr:           s.config.GetAddress(),
+		Addr:           fmt.Sprintf("%s:%d", s.config.Host, s.config.Port),
 		Handler:        s.echo,
 		ReadTimeout:    s.config.ReadTimeout,
 		WriteTimeout:   s.config.WriteTimeout,
@@ -86,28 +86,10 @@ func (s *EchoServer) Start(ctx context.Context) error {
 	)
 
 	// 启动服务器 (Start server)
-	errChan := make(chan error, 1)
-	go func() {
-		if s.config.TLS.Enabled {
-			errChan <- s.httpServer.ListenAndServeTLS(s.config.TLS.CertFile, s.config.TLS.KeyFile)
-		} else {
-			errChan <- s.httpServer.ListenAndServe()
-		}
-	}()
-
-	// 等待启动完成或错误 (Wait for startup completion or error)
-	select {
-	case err := <-errChan:
-		if err != nil && err != http.ErrServerClosed {
-			return s.serviceContainer.GetErrorHandler().Wrap(err, "failed to start Echo server")
-		}
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(time.Second):
-		// 服务器启动成功 (Server started successfully)
-		s.logger.Infow("Echo server started successfully", "address", s.httpServer.Addr)
-		return nil
+	if s.config.TLS.Enabled {
+		return s.httpServer.ListenAndServeTLS(s.config.TLS.CertFile, s.config.TLS.KeyFile)
+	} else {
+		return s.httpServer.ListenAndServe()
 	}
 }
 

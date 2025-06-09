@@ -86,27 +86,18 @@ func NewGinServerWithServices(config *server.ServerConfig, serviceContainer serv
 func (s *GinServer) Start(ctx context.Context) error {
 	logger := s.services.GetLogger()
 	
-	// 启动HTTP服务器 (Start HTTP server)
-	go func() {
-		var err error
-		if s.config.TLS.Enabled {
-			if s.config.TLS.CertFile != "" && s.config.TLS.KeyFile != "" {
-				logger.Infof("Starting HTTPS server on %s", s.config.GetAddress())
-				err = s.httpServer.ListenAndServeTLS(s.config.TLS.CertFile, s.config.TLS.KeyFile)
-			} else {
-				err = fmt.Errorf("TLS enabled but cert file or key file not provided")
-			}
+	// 直接启动HTTP服务器，阻塞等待 (Start HTTP server directly, blocking wait)
+	if s.config.TLS.Enabled {
+		if s.config.TLS.CertFile != "" && s.config.TLS.KeyFile != "" {
+			logger.Infof("Starting HTTPS server on %s", s.config.GetAddress())
+			return s.httpServer.ListenAndServeTLS(s.config.TLS.CertFile, s.config.TLS.KeyFile)
 		} else {
-			logger.Infof("Starting HTTP server on %s", s.config.GetAddress())
-			err = s.httpServer.ListenAndServe()
+			return fmt.Errorf("TLS enabled but cert file or key file not provided")
 		}
-		
-		if err != nil && err != http.ErrServerClosed {
-			logger.Errorf("Failed to start server: %v", err)
-		}
-	}()
-	
-	return nil
+	} else {
+		logger.Infof("Starting HTTP server on %s", s.config.GetAddress())
+		return s.httpServer.ListenAndServe()
+	}
 }
 
 // Stop 停止服务器 (Stop server)
@@ -270,13 +261,11 @@ func (s *GinServer) setupMiddleware() {
 	}
 }
 
-
-
 // applyGinConfig 应用Gin特定配置 (Apply Gin-specific configuration)
 func applyGinConfig(engine *gin.Engine, config map[string]interface{}) {
 	// 设置信任的代理 (Set trusted proxies)
 	if trustedProxies, ok := config["trusted_proxies"].([]string); ok && len(trustedProxies) > 0 {
-		engine.SetTrustedProxies(trustedProxies)
+		_ = engine.SetTrustedProxies(trustedProxies)
 	}
 	
 	// 设置是否重定向尾部斜杠 (Set redirect trailing slash)

@@ -193,7 +193,7 @@ func DefaultPanicHandler(ctx server.Context, recovered interface{}, stack []byte
 	response := DefaultErrorResponse("An unexpected error occurred")
 	
 	// 发送JSON响应 (Send JSON response)
-	ctx.JSON(500, response)
+	_ = ctx.JSON(500, response)
 }
 
 // DebugPanicHandler 调试模式panic处理器 (Debug mode panic handler)
@@ -207,7 +207,7 @@ func DebugPanicHandler(ctx server.Context, recovered interface{}, stack []byte) 
 	}
 	
 	// 发送JSON响应 (Send JSON response)
-	ctx.JSON(500, response)
+	_ = ctx.JSON(500, response)
 }
 
 // ProductionPanicHandler 生产模式panic处理器 (Production mode panic handler)
@@ -220,7 +220,7 @@ func ProductionPanicHandler(ctx server.Context, recovered interface{}, stack []b
 	}
 	
 	// 发送JSON响应 (Send JSON response)
-	ctx.JSON(500, response)
+	_ = ctx.JSON(500, response)
 }
 
 // GetPanicHandlerByMode 根据模式获取panic处理器 (Get panic handler by mode)

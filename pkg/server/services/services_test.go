@@ -359,7 +359,7 @@ func BenchmarkErrorHandlerImpl_New(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		handler.New("benchmark test error")
+		_ = handler.New("benchmark test error")
 	}
 }
 

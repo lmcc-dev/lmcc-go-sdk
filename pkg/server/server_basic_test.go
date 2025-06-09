@@ -53,7 +53,7 @@ func TestNewServerFactory_Basic(t *testing.T) {
 	factory := NewServerFactory()
 	
 	assert.NotNil(t, factory)
-	assert.NotNil(t, factory.registry)
+	// 通过公共方法验证工厂功能而不是访问私有字段 (Verify factory functionality through public methods instead of accessing private fields)
 	
 	// 测试列出插件 (Test listing plugins)
 	plugins := factory.ListPlugins()

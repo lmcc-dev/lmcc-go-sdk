@@ -80,20 +80,11 @@ func (s *FiberServer) Start(ctx context.Context) error {
 		)
 	}
 
-	// 在goroutine中启动服务器 (Start server in goroutine)
-	errChan := make(chan error, 1)
-	go func() {
-		if err := s.fiber.Listen(address); err != nil {
-			errChan <- err
-		}
-	}()
-
-	// 等待上下文取消或启动错误 (Wait for context cancellation or startup error)
-	select {
-	case <-ctx.Done():
-		return s.Stop(context.Background())
-	case err := <-errChan:
-		return err
+	// 直接启动Fiber服务器 (Start Fiber server directly)
+	if s.config.TLS.Enabled {
+		return s.fiber.ListenTLS(address, s.config.TLS.CertFile, s.config.TLS.KeyFile)
+	} else {
+		return s.fiber.Listen(address)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,7 +161,7 @@ func TestGinServerRegisterMiddleware(t *testing.T) {
 		})
 	})
 	
-	ginServer.RegisterRoute("GET", "/test", handler)
+	_ = ginServer.RegisterRoute("GET", "/test", handler)
 	
 	// 测试中间件 (Test middleware)
 	w := httptest.NewRecorder()
@@ -236,9 +237,9 @@ func TestGinServerGroupWithMiddleware(t *testing.T) {
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "api test"})
 	})
 	
-	apiGroup.RegisterRoute("GET", "/test", handler)
+	_ = apiGroup.RegisterRoute("GET", "/test", handler)
 	
-	// 测试组路由和中间件 (Test group route and middleware)
+	// 测试请求 (Test request)
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/test", nil)
 	ginServer.GetGinEngine().ServeHTTP(w, req)
@@ -286,14 +287,14 @@ func TestGinServerStartStop(t *testing.T) {
 	
 	ginServer := NewGinServer(config)
 	
-	// 启动服务器 (Start server)
+	// 在goroutine中启动服务器 (Start server in goroutine)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	
-	err := ginServer.Start(ctx)
-	if err != nil {
-		t.Fatalf("Start() failed: %v", err)
-	}
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- ginServer.Start(ctx)
+	}()
 	
 	// 给服务器一点时间启动 (Give server some time to start)
 	time.Sleep(100 * time.Millisecond)
@@ -302,9 +303,20 @@ func TestGinServerStartStop(t *testing.T) {
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stopCancel()
 	
-	err = ginServer.Stop(stopCtx)
+	err := ginServer.Stop(stopCtx)
 	if err != nil {
 		t.Fatalf("Stop() failed: %v", err)
+	}
+	
+	// 等待Start方法返回 (Wait for Start method to return)
+	select {
+	case err := <-startErr:
+		// Start方法应该因为停止而返回，可能是context取消错误 (Start method should return due to stop, possibly context cancellation error)
+		if err != nil && !strings.Contains(err.Error(), "context canceled") && !strings.Contains(err.Error(), "Server closed") {
+			t.Fatalf("Start() returned unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start method did not return within timeout")
 	}
 }
 
@@ -385,8 +397,8 @@ func BenchmarkGinServerHandleRequest(b *testing.B) {
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "test"})
 	})
 	
-	ginServer.RegisterRoute("GET", "/test", handler)
-	
+	_ = ginServer.RegisterRoute("GET", "/test", handler)
+
 	req, _ := http.NewRequest("GET", "/test", nil)
 	
 	b.ResetTimer()

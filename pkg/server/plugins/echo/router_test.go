@@ -37,8 +37,7 @@ func TestNewEchoRouteGroup(t *testing.T) {
 	assert.NotNil(t, routeGroup)
 
 	// 验证接口实现 (Verify interface implementation)
-	_, ok := routeGroup.(server.RouteGroup)
-	assert.True(t, ok)
+	// routeGroup already implements server.RouteGroup interface
 
 	// 验证类型转换 (Verify type conversion)
 	echoRouteGroup, ok := routeGroup.(*EchoRouteGroup)

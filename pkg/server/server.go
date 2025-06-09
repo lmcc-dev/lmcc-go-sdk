@@ -9,7 +9,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,7 +20,6 @@ import (
 type ServerManager struct {
 	framework WebFramework
 	config    *ServerConfig
-	server    *http.Server
 	running   bool
 }
 
@@ -45,11 +43,7 @@ func (sm *ServerManager) Start(ctx context.Context) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 	
-	// 启动框架 (Start framework)
-	if err := sm.framework.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start framework: %w", err)
-	}
-	
+	// 标记为运行状态 (Mark as running)
 	sm.running = true
 	
 	// 如果启用了优雅关闭，设置信号处理 (If graceful shutdown is enabled, set up signal handling)
@@ -57,6 +51,16 @@ func (sm *ServerManager) Start(ctx context.Context) error {
 		go sm.handleGracefulShutdown()
 	}
 	
+	// 启动框架 (Start framework) - 这是阻塞调用
+	// (This is a blocking call)
+	if err := sm.framework.Start(ctx); err != nil {
+		sm.running = false // 重置状态 (Reset state)
+		return fmt.Errorf("failed to start framework: %w", err)
+	}
+	
+	// 如果到达这里，说明服务器已经停止（可能是优雅关闭）
+	// (If we reach here, the server has stopped - possibly graceful shutdown)
+	sm.running = false
 	return nil
 }
 
@@ -124,30 +128,30 @@ func (sm *ServerManager) handleGracefulShutdown() {
 // ServerFactory 服务器工厂 (Server factory)
 // 提供创建和管理服务器实例的功能 (Provides functionality to create and manage server instances)
 type ServerFactory struct {
-	registry *PluginRegistry
+	// 注意：不再维护自己的注册表，而是使用全局注册表 (Note: no longer maintain own registry, use global registry)
 }
 
 // NewServerFactory 创建服务器工厂 (Create server factory)
 func NewServerFactory() *ServerFactory {
-	return &ServerFactory{
-		registry: NewPluginRegistry(),
-	}
+	return &ServerFactory{}
 }
 
-// RegisterPlugin 注册插件 (Register plugin)
+// RegisterPlugin 注册插件 (Register plugin) 
+// 已废弃：请使用 RegisterFramework (Deprecated: please use RegisterFramework)
 func (sf *ServerFactory) RegisterPlugin(plugin FrameworkPlugin) error {
-	return sf.registry.Register(plugin)
+	return RegisterFramework(plugin)
 }
 
 // UnregisterPlugin 注销插件 (Unregister plugin)
+// 已废弃：请使用 UnregisterFramework (Deprecated: please use UnregisterFramework) 
 func (sf *ServerFactory) UnregisterPlugin(name string) error {
-	return sf.registry.Unregister(name)
+	return UnregisterFramework(name)
 }
 
 // CreateServer 创建服务器实例 (Create server instance)
 func (sf *ServerFactory) CreateServer(frameworkName string, config *ServerConfig) (*ServerManager, error) {
-	// 创建框架实例 (Create framework instance)
-	framework, err := sf.registry.CreateServer(frameworkName, config, nil)
+	// 使用全局注册表创建框架实例 (Use global registry to create framework instance)
+	framework, err := CreateServer(frameworkName, config, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create framework instance: %w", err)
 	}
@@ -160,17 +164,17 @@ func (sf *ServerFactory) CreateServer(frameworkName string, config *ServerConfig
 
 // ListPlugins 列出所有插件 (List all plugins)
 func (sf *ServerFactory) ListPlugins() []string {
-	return sf.registry.List()
+	return ListFrameworks()
 }
 
 // GetPluginInfo 获取插件信息 (Get plugin information)
 func (sf *ServerFactory) GetPluginInfo(name string) (map[string]string, error) {
-	return sf.registry.GetPluginInfo(name)
+	return GetFrameworkInfo(name)
 }
 
 // GetAllPluginInfo 获取所有插件信息 (Get all plugin information)
 func (sf *ServerFactory) GetAllPluginInfo() map[string]map[string]string {
-	return sf.registry.GetAllPluginInfo()
+	return GetAllFrameworkInfo()
 }
 
 // 全局服务器工厂实例 (Global server factory instance)

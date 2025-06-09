@@ -17,7 +17,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/lmcc-dev/lmcc-go-sdk/pkg/server"
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/server/services"
 )
 
@@ -33,8 +32,7 @@ func TestNewEchoContext(t *testing.T) {
 	assert.NotNil(t, ctx)
 	
 	// 验证接口实现 (Verify interface implementation)
-	_, ok := ctx.(server.Context)
-	assert.True(t, ok)
+	// ctx already implements server.Context interface
 	
 	// 验证类型转换 (Verify type conversion)
 	echoContext, ok := ctx.(*EchoContext)

@@ -158,8 +158,8 @@ func (m *CORSMiddleware) Process(ctx server.Context, next func() error) error {
 	m.setCORSHeaders(ctx, origin)
 
 	// 继续处理请求 (Continue processing request)
-	return next()
-}
+		return next()
+	}
 
 // GetGinHandler 返回Gin兼容的处理器 (Return Gin compatible handler)
 func (m *CORSMiddleware) GetGinHandler() gin.HandlerFunc {
@@ -172,7 +172,7 @@ func (m *CORSMiddleware) GetGinHandler() gin.HandlerFunc {
 		
 		// 处理CORS (Handle CORS)
 		m.handleCORS(c)
-		
+	
 		// 如果没有被中止，继续执行 (If not aborted, continue)
 		if !c.IsAborted() {
 			c.Next()

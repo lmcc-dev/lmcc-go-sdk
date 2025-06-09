@@ -90,14 +90,11 @@ func TestGinContextResponse(t *testing.T) {
 	
 	// Gin的Writer是一个包装器，不会直接等于ResponseRecorder
 	// 我们检查它是否实现了http.ResponseWriter接口 (Gin's Writer is a wrapper, won't directly equal ResponseRecorder. We check if it implements http.ResponseWriter interface)
-	_, ok := resp.(http.ResponseWriter)
-	if !ok {
-		t.Error("Response() should return an http.ResponseWriter")
-	}
+	// resp already implements http.ResponseWriter interface
 	
 	// 验证我们可以写入响应 (Verify we can write to the response)
 	resp.WriteHeader(http.StatusOK)
-	resp.Write([]byte("test"))
+	_, _ = resp.Write([]byte("test"))
 	
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
@@ -482,7 +479,7 @@ func BenchmarkGinContextJSON(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ctx.JSON(http.StatusOK, data)
+		_ = ctx.JSON(http.StatusOK, data)
 	}
 }
 

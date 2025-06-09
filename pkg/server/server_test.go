@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/lmcc-dev/lmcc-go-sdk/pkg/server/services"
 	"github.com/stretchr/testify/assert"
@@ -19,15 +20,34 @@ import (
 // MockWebFramework 模拟Web框架用于测试 (Mock web framework for testing)
 type MockWebFramework struct {
 	mock.Mock
+	stopChan chan struct{} // 用于控制Start方法的阻塞 (Used to control blocking in Start method)
 }
 
 func (m *MockWebFramework) Start(ctx context.Context) error {
 	args := m.Called(ctx)
-	return args.Error(0)
+	if err := args.Error(0); err != nil {
+		return err
+	}
+	
+	// 如果没有错误，则阻塞直到stopChan被关闭 (If no error, block until stopChan is closed)
+	if m.stopChan == nil {
+		m.stopChan = make(chan struct{})
+	}
+	
+	select {
+	case <-m.stopChan:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (m *MockWebFramework) Stop(ctx context.Context) error {
 	args := m.Called(ctx)
+	if m.stopChan != nil {
+		close(m.stopChan)
+		m.stopChan = nil
+	}
 	return args.Error(0)
 }
 
@@ -119,9 +139,9 @@ func TestNewServerManager(t *testing.T) {
 	manager := NewServerManager(framework, config)
 
 	assert.NotNil(t, manager)
-	assert.Equal(t, framework, manager.framework)
-	assert.Equal(t, config, manager.config)
-	assert.False(t, manager.running)
+	assert.Equal(t, framework, manager.GetFramework())
+	assert.Equal(t, config, manager.GetConfig())
+	assert.False(t, manager.IsRunning())
 }
 
 // TestServerManager_Start 测试启动服务器 (Test starting server)
@@ -140,13 +160,32 @@ func TestServerManager_Start(t *testing.T) {
 	manager := NewServerManager(framework, config)
 	ctx := context.Background()
 
-	// 期望框架启动成功 (Expect framework to start successfully)
+	// 期望框架启动成功，返回nil表示立即启动成功 (Expect framework to start successfully, return nil means immediate success)
 	framework.On("Start", ctx).Return(nil)
 
-	err := manager.Start(ctx)
+	// 由于Start()会阻塞，我们需要在goroutine中运行它 (Since Start() will block, we need to run it in a goroutine)
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.Start(ctx)
+	}()
 
-	assert.NoError(t, err)
+	// 检查服务器是否正在运行 (Check if server is running)
+	time.Sleep(10 * time.Millisecond) // 给一点时间让Start方法设置running状态 (Give some time for Start method to set running state)
 	assert.True(t, manager.IsRunning())
+	
+	// 停止服务器以使Start方法返回 (Stop server to make Start method return)
+	framework.On("Stop", ctx).Return(nil)
+	err := manager.Stop(ctx)
+	assert.NoError(t, err)
+	
+	// 等待Start方法返回 (Wait for Start method to return)
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Start method did not return within timeout")
+	}
+	
 	framework.AssertExpectations(t)
 }
 
@@ -166,15 +205,33 @@ func TestServerManager_StartAlreadyRunning(t *testing.T) {
 	manager := NewServerManager(framework, config)
 	ctx := context.Background()
 
-	// 第一次启动 (First start)
+	// 第一次启动 (First start) - 在goroutine中运行因为它会阻塞 (Run in goroutine because it will block)
 	framework.On("Start", ctx).Return(nil)
-	err := manager.Start(ctx)
-	assert.NoError(t, err)
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.Start(ctx)
+	}()
+
+	// 等待服务器启动 (Wait for server to start)
+	time.Sleep(10 * time.Millisecond)
+	assert.True(t, manager.IsRunning())
 
 	// 第二次启动应该失败 (Second start should fail)
-	err = manager.Start(ctx)
+	err := manager.Start(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already running")
+
+	// 停止服务器清理测试 (Stop server to clean up test)
+	framework.On("Stop", ctx).Return(nil)
+	_ = manager.Stop(ctx)
+
+	// 等待第一次Start返回 (Wait for first Start to return)
+	select {
+	case <-done:
+		// Start方法正常返回 (Start method returned normally)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Start method did not return within timeout")
+	}
 }
 
 // TestServerManager_StartInvalidConfig 测试使用无效配置启动 (Test starting with invalid config)
@@ -238,17 +295,32 @@ func TestServerManager_Stop(t *testing.T) {
 	manager := NewServerManager(framework, config)
 	ctx := context.Background()
 
-	// 先启动服务器 (Start server first)
+	// 先启动服务器 (Start server first) - 在goroutine中运行因为它会阻塞 (Run in goroutine because it will block)
 	framework.On("Start", ctx).Return(nil)
-	err := manager.Start(ctx)
-	assert.NoError(t, err)
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.Start(ctx)
+	}()
+
+	// 等待服务器启动 (Wait for server to start)
+	time.Sleep(10 * time.Millisecond)
+	assert.True(t, manager.IsRunning())
 
 	// 期望框架停止成功 (Expect framework to stop successfully)
 	framework.On("Stop", ctx).Return(nil)
 
-	err = manager.Stop(ctx)
+	err := manager.Stop(ctx)
 	assert.NoError(t, err)
 	assert.False(t, manager.IsRunning())
+
+	// 等待Start方法返回 (Wait for Start method to return)
+	select {
+	case <-done:
+		// Start方法正常返回 (Start method returned normally)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Start method did not return within timeout")
+	}
+
 	framework.AssertExpectations(t)
 }
 
@@ -286,17 +358,31 @@ func TestServerManager_StopFrameworkError(t *testing.T) {
 	manager := NewServerManager(framework, config)
 	ctx := context.Background()
 
-	// 先启动服务器 (Start server first)
+	// 先启动服务器 (Start server first) - 在goroutine中运行因为它会阻塞 (Run in goroutine because it will block)
 	framework.On("Start", ctx).Return(nil)
-	err := manager.Start(ctx)
-	assert.NoError(t, err)
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.Start(ctx)
+	}()
+
+	// 等待服务器启动 (Wait for server to start)
+	time.Sleep(10 * time.Millisecond)
+	assert.True(t, manager.IsRunning())
 
 	// 期望框架停止失败 (Expect framework stop to fail)
 	framework.On("Stop", ctx).Return(errors.New("framework stop error"))
 
-	err = manager.Stop(ctx)
+	err := manager.Stop(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to stop framework")
+
+	// 等待Start方法返回 (Wait for Start method to return)
+	select {
+	case <-done:
+		// Start方法正常返回 (Start method returned normally)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Start method did not return within timeout")
+	}
 }
 
 // TestServerManager_GetFramework 测试获取框架实例 (Test getting framework instance)
@@ -334,11 +420,15 @@ func TestNewServerFactory(t *testing.T) {
 	factory := NewServerFactory()
 
 	assert.NotNil(t, factory)
-	assert.NotNil(t, factory.registry)
+	// 通过公共方法验证工厂功能而不是访问私有字段 (Verify factory functionality through public methods instead of accessing private fields)
+	plugins := factory.ListPlugins()
+	assert.NotNil(t, plugins)
 }
 
 // TestServerFactory_RegisterPlugin 测试注册插件 (Test registering plugin)
 func TestServerFactory_RegisterPlugin(t *testing.T) {
+	// 清理全局注册表状态 (Clear global registry state)
+	ClearFrameworks()
 	factory := NewServerFactory()
 	plugin := &MockFrameworkPlugin{name: "test"}
 
@@ -351,6 +441,9 @@ func TestServerFactory_RegisterPlugin(t *testing.T) {
 
 // TestServerFactory_UnregisterPlugin 测试注销插件 (Test unregistering plugin)
 func TestServerFactory_UnregisterPlugin(t *testing.T) {
+	// 清理全局注册表状态 (Clear global registry state)
+	ClearFrameworks()
+	
 	factory := NewServerFactory()
 	plugin := &MockFrameworkPlugin{name: "test"}
 
@@ -368,6 +461,8 @@ func TestServerFactory_UnregisterPlugin(t *testing.T) {
 
 // TestServerFactory_CreateServer 测试创建服务器 (Test creating server)
 func TestServerFactory_CreateServer(t *testing.T) {
+	// 清理全局注册表状态 (Clear global registry state)
+	ClearFrameworks()
 	factory := NewServerFactory()
 	plugin := &MockFrameworkPlugin{name: "test"}
 
@@ -408,6 +503,9 @@ func TestServerFactory_CreateServerInvalidPlugin(t *testing.T) {
 
 // TestServerFactory_GetPluginInfo 测试获取插件信息 (Test getting plugin info)
 func TestServerFactory_GetPluginInfo(t *testing.T) {
+	// 清理全局注册表状态 (Clear global registry state)
+	ClearFrameworks()
+	
 	factory := NewServerFactory()
 	plugin := &MockFrameworkPlugin{name: "test"}
 
@@ -422,6 +520,11 @@ func TestServerFactory_GetPluginInfo(t *testing.T) {
 
 // TestServerFactory_GetAllPluginInfo 测试获取所有插件信息 (Test getting all plugin info)
 func TestServerFactory_GetAllPluginInfo(t *testing.T) {
+	// 清理全局注册表状态 (Clear global registry state)
+	ClearFrameworks()
+	// 清理全局注册表状态 (Clear global registry state)
+	ClearFrameworks()
+	
 	factory := NewServerFactory()
 	plugin := &MockFrameworkPlugin{name: "test"}
 
@@ -543,7 +646,7 @@ func BenchmarkServerManager_Start(b *testing.B) {
 func BenchmarkServerFactory_CreateServer(b *testing.B) {
 	factory := NewServerFactory()
 	plugin := &MockFrameworkPlugin{name: "bench-test"}
-	factory.RegisterPlugin(plugin)
+	_ = factory.RegisterPlugin(plugin)
 
 	config := &ServerConfig{
 		Framework: "bench-test",

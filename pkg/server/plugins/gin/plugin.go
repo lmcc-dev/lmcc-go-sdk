@@ -178,9 +178,5 @@ func (p *Plugin) GetConfigSchema() interface{} {
 
 // init 自动注册Gin插件 (Auto-register Gin plugin)
 func init() {
-	// 自动注册到全局注册表 (Auto-register to global registry)
-	if err := server.RegisterFramework(NewPlugin()); err != nil {
-		// 如果注册失败，可能是因为已经注册过了 (If registration fails, it might be already registered)
-		// 这里不做处理，让用户手动处理 (Don't handle here, let user handle manually)
-	}
+	_ = server.RegisterFramework(NewPlugin())
 }

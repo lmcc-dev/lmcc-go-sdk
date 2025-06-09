@@ -158,4 +158,9 @@ func (p *Plugin) GetConfigSchema() interface{} {
 		"required":             []string{"framework"},
 		"additionalProperties": true,
 	}
+}
+
+// init 自动注册Fiber插件 (Auto-register Fiber plugin)
+func init() {
+	_ = server.RegisterFramework(NewPlugin())
 } 

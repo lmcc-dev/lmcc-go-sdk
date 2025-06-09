@@ -167,6 +167,15 @@ func (r *PluginRegistry) GetAllPluginInfo() map[string]map[string]string {
 	return info
 }
 
+// Clear 清除所有已注册的插件 (Clear all registered plugins)
+func (r *PluginRegistry) Clear() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	
+	r.plugins = make(map[string]FrameworkPlugin)
+	r.defaultPlugin = ""
+}
+
 // CreateServer 创建服务器实例 (Create server instance)
 func (r *PluginRegistry) CreateServer(frameworkName string, config *ServerConfig, serviceContainer services.ServiceContainer) (WebFramework, error) {
 	var plugin FrameworkPlugin
@@ -252,4 +261,9 @@ func GetAllFrameworkInfo() map[string]map[string]string {
 // CreateServer 使用全局注册表创建服务器实例 (Create server instance using global registry)
 func CreateServer(frameworkName string, config *ServerConfig, serviceContainer services.ServiceContainer) (WebFramework, error) {
 	return globalRegistry.CreateServer(frameworkName, config, serviceContainer)
+}
+
+// ClearFrameworks 清除全局注册表中的所有框架插件 (Clear all framework plugins in global registry)  
+func ClearFrameworks() {
+	globalRegistry.Clear()
 }

@@ -331,7 +331,7 @@ func BenchmarkGinRouteGroupRegisterRoute(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		path := "/test" + string(rune(i%1000))
-		routeGroup.RegisterRoute("GET", path, testHandler)
+		_ = routeGroup.RegisterRoute("GET", path, testHandler)
 	}
 }
 
@@ -355,13 +355,13 @@ func BenchmarkGinRouteGroupMiddleware(b *testing.B) {
 	testMiddleware := server.MiddlewareFunc(func(ctx server.Context, next func() error) error {
 		return next()
 	})
-	routeGroup.RegisterMiddleware(testMiddleware)
+	_ = routeGroup.RegisterMiddleware(testMiddleware)
 	
 	// 注册路由 (Register route)
 	testHandler := server.HandlerFunc(func(ctx server.Context) error {
 		return ctx.String(200, "benchmark")
 	})
-	routeGroup.RegisterRoute("GET", "/benchmark", testHandler)
+	_ = routeGroup.RegisterRoute("GET", "/benchmark", testHandler)
 	
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/benchmark", nil)
